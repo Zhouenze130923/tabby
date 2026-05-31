@@ -1,0 +1,7 @@
+name: summarize
+description: 总结当前页面内容
+prompt: |
+  请用 300 字以内总结以下内容的核心要点，使用中文。
+  如果内容非中文，请翻译后再总结。
+
+  {page_content}

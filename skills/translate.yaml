@@ -1,0 +1,7 @@
+name: translate
+description: 划词翻译
+prompt: |
+  请将以下内容翻译成中文。如果原文是中文，翻译成英文。
+  仅返回翻译结果，不要添加额外说明。
+
+  {selection}

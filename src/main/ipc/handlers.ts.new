@@ -1,0 +1,276 @@
+import { ipcMain, BrowserWindow } from "electron";
+import { tabManager } from "../browser/tab-manager";
+import {
+  bookmarks,
+  history,
+  settings as dbSettings,
+  close as closeDb,
+} from "../storage/db";
+import { loadSkills, getSkill, executeSkill } from "../skills/loader";
+import { DeepSeekProvider } from "../ai/providers/deepseek";
+import { ClaudeProvider } from "../ai/providers/claude";
+
+// Track the current AbortController for AI stream cancellation
+let currentAbortController: AbortController | null = null;
+
+function getProvider(providerName?: string): any {
+  // Read provider config from SQLite settings
+  const providersRaw = dbSettings.get("providers");
+  const defaultProvider = dbSettings.get("defaultProvider") || "deepseek";
+  const name = providerName || defaultProvider;
+  let providers: Record<string, any> = {};
+  if (providersRaw) {
+    try {
+      providers = JSON.parse(providersRaw);
+    } catch {}
+  }
+  const config = providers[name];
+  if (!config?.apiKey) {
+    throw new Error(`Provider "${name}" not configured. Please add an API key in Settings.`);
+  }
+  switch (name) {
+    case "deepseek":
+      return new DeepSeekProvider({
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
+        model: config.model,
+      });
+    case "claude":
+      return new ClaudeProvider({
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
+        model: config.model,
+      });
+    default:
+      throw new Error(`Unknown provider: ${name}`);
+  }
+}
+
+export function registerHandlers(mainWindow: BrowserWindow) {
+  // 标签页变更时推送至渲染进程（同时发送 activeTabId）
+  tabManager.setOnChange((tabs) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("tab:updated", tabs, tabManager.getActiveId());
+    }
+  });
+
+  // —— 窗口控制 ——
+  ipcMain.handle("window:minimize", () => mainWindow.minimize());
+  ipcMain.handle("window:maximize", () => {
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+  });
+  ipcMain.handle("window:close", () => mainWindow.close());
+  ipcMain.handle("window:isMaximized", () => mainWindow.isMaximized());
+
+  // —— 设置 ——
+  // Build full settings object from SQLite key-value pairs
+  const buildSettings = () => {
+    const flat = dbSettings.getAll();
+    const settings: Record<string, any> = {};
+
+    // Handle known JSON-encoded keys
+    for (const [key, value] of Object.entries(flat)) {
+      if (key === "providers") {
+        try {
+          settings[key] = JSON.parse(value);
+        } catch {
+          settings[key] = {};
+        }
+      } else {
+        settings[key] = value;
+      }
+    }
+
+    // Apply defaults
+    if (!settings.defaultProvider) settings.defaultProvider = "deepseek";
+    if (!settings.theme) settings.theme = "system";
+    if (!settings.searchEngine) settings.searchEngine = "google";
+    if (!settings.providers) settings.providers = {};
+
+    return settings;
+  };
+
+  ipcMain.handle("settings:get", () => buildSettings());
+
+  ipcMain.handle("settings:set", (_e, key: string, value: any) => {
+    const serialized = typeof value === "string" ? value : JSON.stringify(value);
+    dbSettings.set(key, serialized);
+  });
+
+  ipcMain.handle("settings:getProvider", (_e, name: string) => {
+    const providersRaw = dbSettings.get("providers");
+    if (!providersRaw) return null;
+    try {
+      const providers = JSON.parse(providersRaw);
+      return providers[name] || null;
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle("settings:setProvider", (_e, name: string, config: any) => {
+    const providersRaw = dbSettings.get("providers") || "{}";
+    let providers: Record<string, any>;
+    try {
+      providers = JSON.parse(providersRaw);
+    } catch {
+      providers = {};
+    }
+    providers[name] = config;
+    dbSettings.set("providers", JSON.stringify(providers));
+  });
+
+  // —— 标签页 ——
+  ipcMain.handle("tab:create", (_e, url?: string) => {
+    return tabManager.create(url);
+  });
+
+  ipcMain.handle("tab:list", () => {
+    return tabManager.getAll();
+  });
+
+  ipcMain.handle("tab:navigate", (_e, id: string, url: string) => {
+    return tabManager.navigate(id, url);
+  });
+
+  ipcMain.handle("tab:close", (_e, id: string) => {
+    return tabManager.close(id);
+  });
+
+  ipcMain.handle("tab:back", (_e, id: string) => {
+    return true;
+  });
+
+  ipcMain.handle("tab:forward", (_e, id: string) => {
+    return true;
+  });
+
+  ipcMain.handle("tab:reload", (_e, id: string) => {
+    return true;
+  });
+
+  ipcMain.handle("tab:activate", (_e, id: string) => {
+    return tabManager.activate(id);
+  });
+
+  ipcMain.handle("tab:getContent", (_e, id: string) => {
+    const tab = tabManager.getActive();
+    return tab ? `${tab.url}\n${tab.title}` : "";
+  });
+
+  ipcMain.handle("tab:updateMeta", (_e, id: string, updates: Record<string, unknown>) => {
+    return tabManager.updateSilent(id, updates);
+  });
+
+  // —— AI ——
+  ipcMain.handle("ai:chat", async (_e, messages: any[], providerName?: string) => {
+    try {
+      const provider = getProvider(providerName);
+      const result = await provider.chat(messages);
+      return result.choices?.[0]?.message?.content || JSON.stringify(result);
+    } catch (err: any) {
+      console.error("ai:chat error:", err);
+      return `Error: ${err.message}`;
+    }
+  });
+
+  ipcMain.handle("ai:stream", async (event, messages: any[], providerName?: string) => {
+    try {
+      const provider = getProvider(providerName);
+
+      // AbortController for this stream
+      currentAbortController = new AbortController();
+
+      try {
+        const stream = provider.stream(messages, { signal: currentAbortController.signal });
+        for await (const chunk of stream) {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send("ai:chunk", chunk);
+          }
+        }
+        if (!event.sender.isDestroyed()) {
+          event.sender.send("ai:chunk", { type: "done" });
+        }
+      } finally {
+        currentAbortController = null;
+      }
+    } catch (err: any) {
+      console.error("ai:stream error:", err);
+      if (!event.sender.isDestroyed()) {
+        event.sender.send("ai:chunk", { type: "error", content: err.message });
+      }
+    }
+  });
+
+  ipcMain.handle("ai:cancel", () => {
+    if (currentAbortController) {
+      currentAbortController.abort();
+      currentAbortController = null;
+      return true;
+    }
+    return false;
+  });
+
+  ipcMain.handle("ai:context", () => {
+    const active = tabManager.getActive();
+    if (!active) return { url: "", title: "", content: "" };
+    return {
+      url: active.url,
+      title: active.title,
+      content: `${active.url}\n${active.title}`,
+    };
+  });
+
+  // —— 书签 ——
+  ipcMain.handle("bookmark:list", () => {
+    return bookmarks.list();
+  });
+
+  ipcMain.handle("bookmark:add", (_e, url: string, title: string) => {
+    return bookmarks.add(url, title);
+  });
+
+  ipcMain.handle("bookmark:remove", (_e, id: number) => {
+    return bookmarks.remove(id);
+  });
+
+  // —— 历史 ——
+  ipcMain.handle("history:search", (_e, query: string) => {
+    return history.search(query);
+  });
+
+  // —— Skills ——
+  ipcMain.handle("skills:list", () => {
+    return loadSkills();
+  });
+
+  ipcMain.handle("skills:run", async (_e, name: string, context?: Record<string, string>) => {
+    try {
+      // If the skill has context values passed from the renderer, use them
+      const ctx = context || {
+        page_content: "",
+        selection: "",
+        user_intent: "",
+        page_fields: "",
+      };
+      const prompt = executeSkill(name, ctx);
+
+      // Execute by sending to AI
+      const provider = getProvider();
+      const result = await provider.chat([
+        { role: "system", content: "You are a helpful assistant. Execute the following prompt and return only the result." },
+        { role: "user", content: prompt },
+      ]);
+      return result.choices?.[0]?.message?.content || JSON.stringify(result);
+    } catch (err: any) {
+      console.error("skills:run error:", err);
+      return `Error: ${err.message}`;
+    }
+  });
+
+  // —— Cleanup on window close ——
+  mainWindow.on("closed", () => {
+    closeDb();
+  });
+}

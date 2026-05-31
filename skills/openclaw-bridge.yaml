@@ -1,0 +1,8 @@
+name: openclaw-bridge
+description: 兼容 OpenClaw 技能格式的桥接技能
+prompt: |
+  这是一个 OpenClaw 格式的 Skill 扩展点。
+  将此技能与当前页面内容结合，执行 AI 驱动的任务。
+
+  当前任务：{task}
+  页面内容：{page_content}

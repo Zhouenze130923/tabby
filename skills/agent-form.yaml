@@ -1,0 +1,10 @@
+name: agent-form
+description: 自动填写表单
+prompt: |
+  你是浏览器 Agent，请执行以下操作：
+  1. 识别当前页面中的表单字段
+  2. 根据用户提供的表单意图自动填充
+  3. 确认后提交
+
+  用户意图：{user_intent}
+  页面字段：{page_fields}
