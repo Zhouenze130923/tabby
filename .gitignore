@@ -3,3 +3,8 @@ dist/
 release/
 .DS_Store
 *.log
+*.backup
+*.new
+src/preload/bridge.js
+src/preload/bridge.js.map
+.tabby.db

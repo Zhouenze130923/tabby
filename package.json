@@ -45,23 +45,5 @@
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"
-  },
-  "build": {
-    "appId": "com.tabby.browser",
-    "productName": "Tabby",
-    "files": [
-      "dist/**/*"
-    ],
-    "directories": {
-      "output": "release"
-    },
-    "mac": {
-      "target": "dmg",
-      "icon": "resources/icon.png"
-    },
-    "win": {
-      "target": "nsis",
-      "icon": "resources/icon.png"
-    }
   }
 }
