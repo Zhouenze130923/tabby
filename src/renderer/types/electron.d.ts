@@ -84,6 +84,23 @@ interface WebviewFailEvent extends Event {
   validatedURL: string;
 }
 
+interface Prompt {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  category: string;
+  created_at: string;
+}
+
+interface PromptInput {
+  id?: string;
+  name: string;
+  description?: string;
+  prompt: string;
+  category?: string;
+}
+
 interface Window {
   tabby: {
     tab: {
@@ -101,6 +118,12 @@ interface Window {
       registerWebview: (tabId: string, webContentsId: number) => Promise<any>;
       getAllInfo: () => Promise<Array<{id: string; url: string; title: string; favicon: string; isLoading: boolean; isActive: boolean}>>;
       switch: (id: string) => Promise<boolean>;
+      injectStyle: (tabId: string, css: string) => Promise<{success: boolean; error?: string}>;
+      executeJS: (tabId: string, code: string) => Promise<{success: boolean; result?: any; error?: string}>;
+      clickElement: (tabId: string, selector: string) => Promise<{success: boolean; error?: string}>;
+      fillInput: (tabId: string, selector: string, value: string) => Promise<{success: boolean; error?: string}>;
+      extractText: (tabId: string, selector?: string) => Promise<{success: boolean; text?: string; error?: string}>;
+      scrollTo: (tabId: string, x: number, y: number) => Promise<{success: boolean; error?: string}>;
     };
     ai: {
       chat: (messages: any[], provider?: string) => Promise<string>;
@@ -135,10 +158,23 @@ interface Window {
       fromFirefox: () => Promise<ImportResult>;
       fromAll: () => Promise<ImportResult[]>;
     };
+    prompts: {
+      list: () => Promise<Prompt[]>;
+      save: (p: PromptInput) => Promise<Prompt>;
+      delete: (id: string) => Promise<boolean>;
+    };
     search: {
       query: (q: string) => Promise<{results: SearchResult[]; answer?: string; error?: string}>;
       getConfig: () => Promise<SearchConfig>;
       saveConfig: (config: SearchConfig) => Promise<{success: boolean}>;
+    };
+    tasks: {
+      list: () => Promise<ScheduledTask[]>;
+      create: (task: Omit<ScheduledTask, "created_at">) => Promise<ScheduledTask>;
+      update: (id: string, updates: Partial<ScheduledTask>) => Promise<boolean>;
+      delete: (id: string) => Promise<boolean>;
+      toggle: (id: string, active: boolean) => Promise<boolean>;
+      onExecute: (cb: (task: { id: string; name: string; prompt: string }) => void) => () => void;
     };
     window: {
       minimize: () => Promise<void>;
@@ -162,6 +198,19 @@ interface ImportResult {
   count: number;
   success: boolean;
   error?: string;
+}
+
+interface ScheduledTask {
+  id: string;
+  name: string;
+  type: "interval" | "cron" | "once";
+  interval_ms?: number;
+  cron_expr?: string;
+  prompt: string;
+  tab_url?: string;
+  active: boolean;
+  last_run?: string;
+  created_at: string;
 }
 
 interface SearchConfig {

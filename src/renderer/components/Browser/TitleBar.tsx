@@ -1,20 +1,28 @@
-import { Settings, Lightbulb, Clock } from "lucide-react";
+import { Settings, Lightbulb, Clock, Timer } from "lucide-react";
 
-export default function TitleBar({ setShowSidePanel, showSidePanel, onOpenSettings, onOpenTips, onOpenHistory }: {
+export default function TitleBar({ setShowSidePanel, showSidePanel, onOpenSettings, onOpenPrompts, onOpenHistory, onOpenTasks }: {
   setShowSidePanel: (v: boolean) => void;
   showSidePanel: boolean;
   onOpenSettings: () => void;
-  onOpenTips: () => void;
+  onOpenPrompts: () => void;
   onOpenHistory: () => void;
+  onOpenTasks: () => void;
 }) {
   return (
     <div className="flex items-center h-9 px-3 bg-gray-100 dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-700 draggable-area shrink-0">
       <span className="text-sm font-medium text-gray-600 dark:text-gray-300 ml-8">Pivot</span>
       <div className="flex-1" />
       <button
-        onClick={onOpenTips}
+        onClick={onOpenTasks}
         className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-500 dark:text-gray-400 mr-1"
-        title="Pivot 妙招"
+        title="定时任务"
+      >
+        <Timer size={15} />
+      </button>
+      <button
+        onClick={onOpenPrompts}
+        className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-500 dark:text-gray-400 mr-1"
+        title="妙招 — AI 提示词模板库"
       >
         <Lightbulb size={15} />
       </button>

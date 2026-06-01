@@ -4,9 +4,12 @@ import {
   bookmarks,
   history,
   settings as dbSettings,
+  prompts,
   close as closeDb,
 } from "../storage/db";
 import { loadSkills, getSkill, executeSkill } from "../skills/loader";
+import { tasks as dbTasks } from "../storage/db";
+import { taskScheduler } from "../tasks/scheduler";
 import { importFromChrome, importFromSafari, importFromFirefox, importFromAll } from "../import/browsers";
 import { DeepSeekProvider } from "../ai/providers/deepseek";
 import { ClaudeProvider } from "../ai/providers/claude";
@@ -198,6 +201,104 @@ export function registerHandlers(mainWindow: BrowserWindow) {
     return tab ? true : false;
   });
 
+  ipcMain.handle("tab:injectStyle", async (_e, tabId: string, css: string) => {
+    try {
+      const wcId = tabWebContents.get(tabId);
+      if (!wcId) return { success: false, error: "tab not found" };
+      const wc = webContents.fromId(wcId);
+      if (!wc || wc.isDestroyed()) return { success: false, error: "webview destroyed" };
+      wc.insertCSS(css);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("tab:executeJS", async (_e, tabId: string, code: string) => {
+    try {
+      const wcId = tabWebContents.get(tabId);
+      if (!wcId) return { success: false, error: "tab not found" };
+      const wc = webContents.fromId(wcId);
+      if (!wc || wc.isDestroyed()) return { success: false, error: "webview destroyed" };
+      const result = await wc.executeJavaScript(code);
+      return { success: true, result };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("tab:clickElement", async (_e, tabId: string, selector: string) => {
+    try {
+      const wcId = tabWebContents.get(tabId);
+      if (!wcId) return { success: false, error: "tab not found" };
+      const wc = webContents.fromId(wcId);
+      if (!wc || wc.isDestroyed()) return { success: false, error: "webview destroyed" };
+      await wc.executeJavaScript(`
+        (() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return false;
+          el.click();
+          return true;
+        })()
+      `);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("tab:fillInput", async (_e, tabId: string, selector: string, value: string) => {
+    try {
+      const wcId = tabWebContents.get(tabId);
+      if (!wcId) return { success: false, error: "tab not found" };
+      const wc = webContents.fromId(wcId);
+      if (!wc || wc.isDestroyed()) return { success: false, error: "webview destroyed" };
+      await wc.executeJavaScript(`
+        (() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return false;
+          el.focus();
+          el.value = ${JSON.stringify(value)};
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        })()
+      `);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("tab:extractText", async (_e, tabId: string, selector?: string) => {
+    try {
+      const wcId = tabWebContents.get(tabId);
+      if (!wcId) return { success: false, error: "tab not found" };
+      const wc = webContents.fromId(wcId);
+      if (!wc || wc.isDestroyed()) return { success: false, error: "webview destroyed" };
+      const code = selector
+        ? `(() => { const el = document.querySelector(${JSON.stringify(selector)}); return el ? el.innerText || el.textContent || "" : ""; })()`
+        : `document.body.innerText`;
+      const text = await wc.executeJavaScript(code);
+      return { success: true, text: String(text) };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("tab:scrollTo", async (_e, tabId: string, x: number, y: number) => {
+    try {
+      const wcId = tabWebContents.get(tabId);
+      if (!wcId) return { success: false, error: "tab not found" };
+      const wc = webContents.fromId(wcId);
+      if (!wc || wc.isDestroyed()) return { success: false, error: "webview destroyed" };
+      await wc.executeJavaScript(`window.scrollTo(${x}, ${y});`);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
   ipcMain.handle("tab:updateMeta", (_e, id: string, updates: Record<string, unknown>) => {
     return tabManager.updateSilent(id, updates);
   });
@@ -354,8 +455,50 @@ export function registerHandlers(mainWindow: BrowserWindow) {
     return { success: true };
   });
 
+  // —— Prompts (妙招) ——
+  ipcMain.handle("prompts:list", () => {
+    // Seed defaults if empty, then return all
+    prompts.seedDefaults();
+    return prompts.all();
+  });
+
+  ipcMain.handle("prompts:save", (_e, p: { id?: string; name: string; description?: string; prompt: string; category?: string }) => {
+    const id = p.id || `prompt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    return prompts.add({ ...p, id });
+  });
+
+  ipcMain.handle("prompts:delete", (_e, id: string) => {
+    return prompts.remove(id);
+  });
+
+  // —— Scheduled Tasks ——
+  ipcMain.handle("tasks:list", () => {
+    return dbTasks.all();
+  });
+
+  ipcMain.handle("tasks:create", (_e, task: Parameters<typeof dbTasks.add>[0]) => {
+    return dbTasks.add(task);
+  });
+
+  ipcMain.handle("tasks:update", (_e, id: string, updates: Parameters<typeof dbTasks.update>[1]) => {
+    return dbTasks.update(id, updates);
+  });
+
+  ipcMain.handle("tasks:delete", (_e, id: string) => {
+    return dbTasks.remove(id);
+  });
+
+  ipcMain.handle("tasks:toggle", (_e, id: string, active: boolean) => {
+    return dbTasks.update(id, { active });
+  });
+
   // —— Cleanup on window close ——
   mainWindow.on("closed", () => {
+    taskScheduler.stop();
     closeDb();
   });
+
+  // Connect scheduler to main window
+  taskScheduler.setMainWindow(mainWindow);
+  taskScheduler.start();
 }

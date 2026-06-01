@@ -9,16 +9,20 @@ import TitleBar from "./components/Browser/TitleBar";
 import ErrorBoundary from "./components/ErrorBoundary";
 import SettingsPanel from "./components/Settings/SettingsPanel";
 import HistoryPanel from "./components/History/HistoryPanel";
-import TipsPanel from "./components/Tips/TipsPanel";
+import PromptsPanel from "./components/Tips/TipsPanel";
+import TasksPanel from "./components/Tasks/TasksPanel";
 
 export default function App() {
   const activeTabId = useTabStore((s) => s.activeTabId);
   const accentColor = useThemeStore((s) => s.accentColor);
   const [showSidePanel, setShowSidePanel] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
-  const [showTips, setShowTips] = useState(false);
+  const [showPrompts, setShowPrompts] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showTasks, setShowTasks] = useState(false);
   const [aiSearchQuery, setAiSearchQuery] = useState<string | null>(null);
+  const [aiPromptToExecute, setAiPromptToExecute] = useState<{ text: string } | null>(null);
+  const taskExecutionInProgress = useRef(false);
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const initialized = useRef(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -72,7 +76,24 @@ export default function App() {
       }
     });
 
-    return unsub;
+    // 注册定时任务执行监听
+    const unsubTasks = window.tabby.tasks.onExecute((task) => {
+      if (taskExecutionInProgress.current) return;
+      taskExecutionInProgress.current = true;
+
+      setShowSidePanel(true);
+      setAiPromptToExecute({ text: `[定时任务: ${task.name}] ${task.prompt}` });
+
+      // Reset the flag after a delay
+      setTimeout(() => {
+        taskExecutionInProgress.current = false;
+      }, 5000);
+    });
+
+    return () => {
+      unsub();
+      unsubTasks();
+    };
   }, []);
 
   return (
@@ -82,8 +103,9 @@ export default function App() {
         setShowSidePanel={setShowSidePanel}
         showSidePanel={showSidePanel}
         onOpenSettings={() => setShowSettings(true)}
-        onOpenTips={() => setShowTips(true)}
+        onOpenPrompts={() => setShowPrompts(true)}
         onOpenHistory={() => setShowHistory(true)}
+        onOpenTasks={() => setShowTasks(true)}
       />
       <TabBar />
       <AddressBar onAiSearch={(query) => { setShowSidePanel(true); setAiSearchQuery(query); }} />
@@ -103,14 +125,23 @@ export default function App() {
               className="border-l border-gray-200 dark:border-zinc-700 flex flex-col shrink-0"
               style={{ width: sidebarWidth }}
             >
-              <SidePanel tabId={activeTabId} initialQuery={aiSearchQuery} onQueryConsumed={() => setAiSearchQuery(null)} />
+              <SidePanel tabId={activeTabId} initialQuery={aiSearchQuery} onQueryConsumed={() => setAiSearchQuery(null)} executePrompt={aiPromptToExecute} onPromptExecuted={() => setAiPromptToExecute(null)} />
             </div>
           </>
         )}
       </div>
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
-      {showTips && <TipsPanel onClose={() => setShowTips(false)} />}
+      {showPrompts && (
+        <PromptsPanel
+          onClose={() => setShowPrompts(false)}
+          onExecutePrompt={(text) => {
+            setShowSidePanel(true);
+            setAiPromptToExecute({ text });
+          }}
+        />
+      )}
       {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
+      {showTasks && <TasksPanel onClose={() => setShowTasks(false)} />}
     </div>
     </ErrorBoundary>
   );

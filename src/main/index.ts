@@ -1,6 +1,7 @@
 import { app, BrowserWindow, session } from "electron";
 import path from "path";
 import { registerHandlers } from "./ipc/handlers";
+import { taskScheduler } from "./tasks/scheduler";
 
 let mainWindow: BrowserWindow | null = null;
 

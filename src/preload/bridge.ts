@@ -28,6 +28,24 @@ const api = {
     getAllInfo: () => ipcRenderer.invoke("tab:getAllInfo"),
     /** 切换到指定标签页 */
     switch: (id: string) => ipcRenderer.invoke("tab:switch", id),
+    /** 向标签页注入 CSS 样式 */
+    injectStyle: (tabId: string, css: string) =>
+      ipcRenderer.invoke("tab:injectStyle", tabId, css),
+    /** Execute JavaScript in the tab page */
+    executeJS: (tabId: string, code: string) =>
+      ipcRenderer.invoke("tab:executeJS", tabId, code),
+    /** Click an element by CSS selector */
+    clickElement: (tabId: string, selector: string) =>
+      ipcRenderer.invoke("tab:clickElement", tabId, selector),
+    /** Fill an input field */
+    fillInput: (tabId: string, selector: string, value: string) =>
+      ipcRenderer.invoke("tab:fillInput", tabId, selector, value),
+    /** Extract text from page or element */
+    extractText: (tabId: string, selector?: string) =>
+      ipcRenderer.invoke("tab:extractText", tabId, selector),
+    /** Scroll the page */
+    scrollTo: (tabId: string, x: number, y: number) =>
+      ipcRenderer.invoke("tab:scrollTo", tabId, x, y),
   },
 
   // AI
@@ -84,11 +102,33 @@ const api = {
     fromAll: () => ipcRenderer.invoke("import:fromAll"),
   },
 
+  // 妙招（Prompt 模板库）
+  prompts: {
+    list: () => ipcRenderer.invoke("prompts:list"),
+    save: (p: { id?: string; name: string; description?: string; prompt: string; category?: string }) =>
+      ipcRenderer.invoke("prompts:save", p),
+    delete: (id: string) => ipcRenderer.invoke("prompts:delete", id),
+  },
+
   // 搜索
   search: {
     query: (q: string) => ipcRenderer.invoke("search:query", q),
     getConfig: () => ipcRenderer.invoke("search:config"),
     saveConfig: (config: any) => ipcRenderer.invoke("search:saveConfig", config),
+  },
+
+  // 定时任务
+  tasks: {
+    list: () => ipcRenderer.invoke("tasks:list"),
+    create: (task: any) => ipcRenderer.invoke("tasks:create", task),
+    update: (id: string, updates: any) => ipcRenderer.invoke("tasks:update", id, updates),
+    delete: (id: string) => ipcRenderer.invoke("tasks:delete", id),
+    toggle: (id: string, active: boolean) => ipcRenderer.invoke("tasks:toggle", id, active),
+    onExecute: (cb: (task: { id: string; name: string; prompt: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, task: { id: string; name: string; prompt: string }) => cb(task);
+      ipcRenderer.on("tasks:execute", handler);
+      return () => ipcRenderer.removeListener("tasks:execute", handler);
+    },
   },
 
   // 窗口控制

@@ -9,15 +9,18 @@ interface SidePanelProps {
   tabId: string | null;
   initialQuery?: string | null;
   onQueryConsumed?: () => void;
+  executePrompt?: { text: string } | null;
+  onPromptExecuted?: () => void;
 }
 
-export default function SidePanel({ tabId, initialQuery, onQueryConsumed }: SidePanelProps) {
+export default function SidePanel({ tabId, initialQuery, onQueryConsumed, executePrompt, onPromptExecuted }: SidePanelProps) {
   const setAccentColor = useThemeStore((s) => s.setAccentColor);
   const accentColor = useThemeStore((s) => s.accentColor);
   const [input, setInput] = useState("");
   const [includeContext, setIncludeContext] = useState(true);
   const [searching, setSearching] = useState(false);
   const [tabList, setTabList] = useState<string>("");
+  const pendingPromptRef = useRef(false);
   const [groupInfo, setGroupInfo] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initialSent = useRef(false);
@@ -40,8 +43,24 @@ Tab group commands:
 - [tab-action: classify] — analyze all open tabs and group them by category (shopping, social, work, entertainment, etc.)
 - [tab-action: group Name, tabId1, tabId2] — create or reassign a named group (use tab IDs from the list above)
 
+Page manipulation — directly interact with pages:
+- [tab-action: click tab_xxx, .button-class] — click an element by CSS selector
+- [tab-action: type tab_xxx, #input-id, text to type] — fill an input field
+- [tab-action: extract tab_xxx, .content] — extract text from page/element
+- [tab-action: scroll tab_xxx, 0, 500] — scroll page to position
+
+Schedule commands:
+- [tab-action: schedule 名称, 间隔毫秒, 要执行的提示] — create a repeating task (e.g. schedule 自动检查, 300000, 检查页面更新)
+- [tab-action: schedule 名称, cron, cron表达式, 要执行的提示] — create a cron-scheduled task (e.g. schedule 日报, cron, 0 8 * * *, 生成今日日报)
+- [tab-action: schedule 名称, once, 要执行的提示] — create a one-time task
+
+Tab style commands — inject CSS into any tab to change how it looks:
+- [tab-action: style tab_xxx, body { background: #1a1a2e !important; color: #eee !important; }] — apply custom CSS to a page
+- [tab-action: style tab_xxx, * { font-size: 18px !important; }] — change font size
+- [tab-action: style tab_xxx, .sidebar, #sidebar { display: none !important; }] — hide elements like sidebars
+
 Theme command:
-- [set-accent: #ff0000] — change theme color
+- [set-accent: #ff0000] — change browser theme color
 
 Current accent: ${accentColor}
 
@@ -141,6 +160,123 @@ Respond in Chinese.`;
             }
             break;
           }
+          case "click": {
+            // 格式: click tabId, selector
+            const sep = args.indexOf(",");
+            if (sep > 0) {
+              const tid = args.slice(0, sep).trim();
+              const selector = args.slice(sep + 1).trim();
+              window.tabby.tab.clickElement(tid, selector);
+            }
+            break;
+          }
+          case "type": {
+            // 格式: type tabId, selector, text
+            const parts = args.split(",").map((s) => s.trim());
+            if (parts.length >= 3) {
+              const tid = parts[0];
+              const selector = parts[1];
+              const text = parts.slice(2).join(",");
+              window.tabby.tab.fillInput(tid, selector, text);
+            }
+            break;
+          }
+          case "extract": {
+            // 格式: extract tabId, selector? (selector 可选)
+            const sep = args.indexOf(",");
+            if (sep > 0) {
+              const tid = args.slice(0, sep).trim();
+              const selector = args.slice(sep + 1).trim();
+              window.tabby.tab.extractText(tid, selector);
+            } else {
+              window.tabby.tab.extractText(args.trim());
+            }
+            break;
+          }
+          case "scroll": {
+            // 格式: scroll tabId, x, y
+            const parts = args.split(",").map((s) => s.trim());
+            if (parts.length >= 3) {
+              const tid = parts[0];
+              const x = parseInt(parts[1], 10) || 0;
+              const y = parseInt(parts[2], 10) || 0;
+              window.tabby.tab.scrollTo(tid, x, y);
+            }
+            break;
+          }
+          case "schedule": {
+            // 格式: schedule 名称, 间隔毫秒, 要执行的提示
+            // 或: schedule 名称, cron, cron表达式, 要执行的提示
+            // 或: schedule 名称, once, 要执行的提示
+            const parts = args.split(",").map((s) => s.trim());
+            const taskName = parts[0];
+            if (!taskName) break;
+
+            const typeOrInterval = parts[1];
+            if (!typeOrInterval) break;
+
+            if (typeOrInterval === "cron") {
+              // schedule name, cron, expression, prompt
+              const cronExpr = parts[2];
+              const prompt = parts.slice(3).join(", ").trim();
+              if (!cronExpr || !prompt) break;
+              window.tabby.tab.getAllInfo().then((tabs) => {
+                const active = tabs.find((t) => t.isActive);
+                window.tabby.tasks.create({
+                  id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                  name: taskName,
+                  type: "cron",
+                  cron_expr: cronExpr,
+                  prompt,
+                  tab_url: active?.url || "",
+                  active: true,
+                });
+              });
+            } else if (typeOrInterval === "once") {
+              // schedule name, once, prompt
+              const prompt = parts.slice(2).join(", ").trim();
+              if (!prompt) break;
+              window.tabby.tab.getAllInfo().then((tabs) => {
+                const active = tabs.find((t) => t.isActive);
+                window.tabby.tasks.create({
+                  id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                  name: taskName,
+                  type: "once",
+                  prompt,
+                  tab_url: active?.url || "",
+                  active: true,
+                });
+              });
+            } else {
+              // schedule name, intervalMs, prompt
+              const intervalMs = parseInt(typeOrInterval, 10);
+              const prompt = parts.slice(2).join(", ").trim();
+              if (isNaN(intervalMs) || !prompt) break;
+              window.tabby.tab.getAllInfo().then((tabs) => {
+                const active = tabs.find((t) => t.isActive);
+                window.tabby.tasks.create({
+                  id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                  name: taskName,
+                  type: "interval",
+                  interval_ms: intervalMs,
+                  prompt,
+                  tab_url: active?.url || "",
+                  active: true,
+                });
+              });
+            }
+            break;
+          }
+          case "style": {
+            // 格式: style tabId, CSS代码
+            const sep = args.indexOf(",");
+            if (sep > 0) {
+              const tid = args.slice(0, sep).trim();
+              const css = args.slice(sep + 1).trim();
+              window.tabby.tab.injectStyle(tid, css);
+            }
+            break;
+          }
         }
       } catch (e) {
         console.error("tab-action failed:", e);
@@ -151,6 +287,15 @@ Respond in Chinese.`;
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Execute prompt template from PromptsPanel (send directly to AI, no web search)
+  useEffect(() => {
+    if (executePrompt?.text && !pendingPromptRef.current && !loading && !searching) {
+      pendingPromptRef.current = true;
+      send(executePrompt.text, true);
+      onPromptExecuted?.();
+    }
+  }, [executePrompt]);
 
   useEffect(() => {
     if (initialQuery && !initialSent.current && !loading && !searching) {
