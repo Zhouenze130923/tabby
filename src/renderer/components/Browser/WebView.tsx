@@ -47,12 +47,19 @@ export default function WebView({ onAiSearch }: { onAiSearch?: (query: string) =
         }
       };
 
+      const onNewWindow = (e: any) => {
+        // 点击 target=_blank 或中键打开链接时，在 Pivot 中创建新标签页
+        const url = e.url || "";
+        if (url) window.tabby.tab.create(url);
+      };
+
       wv.addEventListener("did-navigate", onNavigate);
       wv.addEventListener("did-navigate-in-page", onNavigate);
       wv.addEventListener("did-start-loading", onStartLoading);
       wv.addEventListener("did-stop-loading", onStopLoading);
       wv.addEventListener("page-title-updated", onTitleUpdated);
       wv.addEventListener("page-favicon-updated", onFaviconUpdated);
+      wv.addEventListener("new-window", onNewWindow);
 
       (wv as any).__tabby_cleanup = () => {
         wv.removeEventListener("did-navigate", onNavigate);
@@ -61,6 +68,7 @@ export default function WebView({ onAiSearch }: { onAiSearch?: (query: string) =
         wv.removeEventListener("did-stop-loading", onStopLoading);
         wv.removeEventListener("page-title-updated", onTitleUpdated);
         wv.removeEventListener("page-favicon-updated", onFaviconUpdated);
+        wv.removeEventListener("new-window", onNewWindow);
       };
     },
     [updateTab]
