@@ -117,14 +117,13 @@ Respond in Chinese.`;
     systemPrompt,
   });
 
-  // 监听 AI 输出中的 tab-action 标记（每个 AI 消息只执行一次）
-  const processedActions = useRef(new Set<string>());
+  // 监听 AI 输出中的 tab-action 标记（按消息条数索引，避免流式分片重复执行）
+  const processedMsgCount = useRef(0);
   useEffect(() => {
+    if (messages.length <= processedMsgCount.current) return;
     const last = messages[messages.length - 1];
     if (!last || last.role !== "assistant") return;
-    // 已处理过的消息跳过
-    if (processedActions.current.has(last.content)) return;
-    processedActions.current.add(last.content);
+    processedMsgCount.current = messages.length;
 
     const tabRegex = /\[tab-action:\s*(\w+)\s*,?\s*([^\]]*)\]/g;
     let match;
