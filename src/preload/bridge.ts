@@ -43,6 +43,7 @@ const api = {
     /** Scroll the page */
     scrollTo: (tabId: string, x: number, y: number) =>
       ipcRenderer.invoke("tab:scrollTo", tabId, x, y),
+    createPage: (html: string) => ipcRenderer.invoke("tab:createPage", html),
   },
 
   // AI

@@ -123,6 +123,7 @@ interface Window {
       fillInput: (tabId: string, selector: string, value: string) => Promise<{success: boolean; error?: string}>;
       extractText: (tabId: string, selector?: string) => Promise<{success: boolean; text?: string; error?: string}>;
       scrollTo: (tabId: string, x: number, y: number) => Promise<{success: boolean; error?: string}>;
+      createPage: (html: string) => Promise<{success: boolean; url?: string; error?: string}>;
     };
     ai: {
       chat: (messages: any[], provider?: string) => Promise<string>;

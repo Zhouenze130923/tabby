@@ -1,4 +1,6 @@
-import { ipcMain, BrowserWindow, webContents } from "electron";
+import { ipcMain, BrowserWindow, webContents, app } from "electron";
+import fs from "fs";
+import path from "path";
 import { tabManager } from "../browser/tab-manager";
 import {
   bookmarks,
@@ -288,6 +290,20 @@ export function registerHandlers(mainWindow: BrowserWindow) {
 
   ipcMain.handle("tab:updateMeta", (_e, id: string, updates: Record<string, unknown>) => {
     return tabManager.updateSilent(id, updates);
+  });
+
+  // —— 创建网页 ——
+  ipcMain.handle("tab:createPage", async (_e, html: string) => {
+    try {
+      const pagesDir = path.join(app.getPath("userData"), "pages");
+      if (!fs.existsSync(pagesDir)) fs.mkdirSync(pagesDir, { recursive: true });
+      const filename = `page_${Date.now()}.html`;
+      const filePath = path.join(pagesDir, filename);
+      fs.writeFileSync(filePath, html, "utf-8");
+      return { success: true, url: `file://${filePath}` };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   });
 
   // —— AI ——

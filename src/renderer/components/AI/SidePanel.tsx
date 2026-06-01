@@ -42,6 +42,7 @@ COMMANDS:
 - [tab-action: extract tabId] — extract text
 - [tab-action: classify] — group tabs
 - [tab-action: schedule name, ms, prompt] — create task
+- [tab-action: create-page, full HTML content here] — create a webpage from HTML and open it
 - [set-accent: #HEX] — change browser accent color
 
 BROWSER STYLE — change how the browser itself looks:
@@ -269,6 +270,18 @@ Respond in Chinese.`;
                   tab_url: active?.url || "",
                   active: true,
                 });
+              });
+            }
+            break;
+          }
+          case "create-page": {
+            // create-page, HTML content
+            const htmlContent = args.trim();
+            if (htmlContent) {
+              window.tabby.tab.createPage(htmlContent).then(res => {
+                if (res.success && res.url) {
+                  window.tabby.tab.create(res.url);
+                }
               });
             }
             break;
