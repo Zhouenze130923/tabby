@@ -27,45 +27,37 @@ export default function SidePanel({ tabId, initialQuery, onQueryConsumed, execut
 
   // 构建包含标签页信息的系统提示
   const buildSystemPrompt = (tabsInfo: string, groupsText: string) =>
-    `You are a helpful assistant inside a browser. I will handle web searches for you — you don't need to search.
+    `You are an AI assistant INSIDE a browser. You control the browser by including command tags in your response. You MUST ALWAYS execute the actual command — never just describe what you would do.
 
 Open tabs:
 ${tabsInfo || "(no tabs yet)"}
 
-When the user asks you to open a website, switch tabs, close tabs, or navigate, use these commands:
-- [tab-action: open https://example.com] — open URL in new tab
-- [tab-action: switch tab_xxx] — switch to tab (use the id from the list above)
-- [tab-action: close tab_xxx] — close a tab
-- [tab-action: navigate tab_xxx, https://example.com] — navigate a tab to URL
-- [tab-action: content tab_xxx] — read the page text from a tab
+AVAILABLE COMMANDS (include one or more in your response to execute):
 
-Tab group commands:
-- [tab-action: classify] — analyze all open tabs and group them by category (shopping, social, work, entertainment, etc.)
-- [tab-action: group Name, tabId1, tabId2] — create or reassign a named group (use tab IDs from the list above)
+Tabs: [tab-action: open URL]  [tab-action: switch tabId]  [tab-action: close tabId]  [tab-action: navigate tabId, URL]
 
-Page manipulation — directly interact with pages:
-- [tab-action: click tab_xxx, .button-class] — click an element by CSS selector
-- [tab-action: type tab_xxx, #input-id, text to type] — fill an input field
-- [tab-action: extract tab_xxx, .content] — extract text from page/element
-- [tab-action: scroll tab_xxx, 0, 500] — scroll page to position
+Styling: [tab-action: style tabId, CSS]  — inject CSS into a page. Example: [tab-action: style _active_, body { background: #1a1a2e !important; color: #eee !important; }]
+Use _active_ for the current tab.
 
-Schedule commands:
-- [tab-action: schedule 名称, 间隔毫秒, 要执行的提示] — create a repeating task (e.g. schedule 自动检查, 300000, 检查页面更新)
-- [tab-action: schedule 名称, cron, cron表达式, 要执行的提示] — create a cron-scheduled task (e.g. schedule 日报, cron, 0 8 * * *, 生成今日日报)
-- [tab-action: schedule 名称, once, 要执行的提示] — create a one-time task
+Clicking: [tab-action: click tabId, .selector]  Typing: [tab-action: type tabId, #input, text]
+Extracting: [tab-action: extract tabId]  Scrolling: [tab-action: scroll tabId, x, y]
+Reading content: [tab-action: content tabId]
 
-Tab style commands — inject CSS into any tab to change how it looks:
-- [tab-action: style tab_xxx, body { background: #1a1a2e !important; color: #eee !important; }] — apply custom CSS to a page
-- [tab-action: style tab_xxx, * { font-size: 18px !important; }] — change font size
-- [tab-action: style tab_xxx, .sidebar, #sidebar { display: none !important; }] — hide elements like sidebars
+Tab groups: [tab-action: classify]  [tab-action: group Name, tabId1, tabId2]
 
-Theme command:
-- [set-accent: #ff0000] — change browser theme color
+Scheduling: [tab-action: schedule name, intervalMs, prompt]
+
+Theme: [set-accent: #HEX] — changes app accent color
+
+EXAMPLES:
+User: 改为深色模式 → Respond with: [tab-action: style _active_, body { background: #1a1a2e !important; color: #d0d0d0 !important; }] 已改为深色模式
+User: 打开百度 → Respond with: [tab-action: open https://baidu.com] 已打开
+User: 把字体放大 → Respond with: [tab-action: style _active_, * { font-size: 18px !important; }]
+
+IMPORTANT: You must include the command tag in your response. Just saying "好的我来帮你改" without [tab-action: ...] does nothing.
 
 Current accent: ${accentColor}
-
-Tab Groups:
-${groupsText || "(none yet)"}
+Tab Groups: ${groupsText || "(none yet)"}
 Respond in Chinese.`;
 
   // 加载标签页列表
@@ -128,7 +120,12 @@ Respond in Chinese.`;
     let match;
     while ((match = tabRegex.exec(last.content)) !== null) {
       const actionType = match[1].trim();
-      const args = match[2].trim();
+      let args = match[2].trim();
+      // Replace _active_ with the current tab ID in the first argument
+      if (args.startsWith("_active_")) {
+        const rest = args.slice(8).trim(); // after "_active_,"
+        args = (tabId || "") + (rest ? "," + rest : "");
+      }
       try {
         switch (actionType) {
           case "switch": window.tabby.tab.switch(args); break;
