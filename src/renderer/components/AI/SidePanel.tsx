@@ -293,47 +293,7 @@ Respond in Chinese.`;
     }
   }, [messages]);
 
-  // 监听 AI 中的 [browser-style: ...] 标记，直接修改浏览器界面
-  useEffect(() => {
-    const last = messages[messages.length - 1];
-    if (!last?.content || last.role !== "assistant") return;
-    const styleRegex = /\[browser-style:\s*(\w+)\s*,?\s*([^\]]*)\]/g;
-    let m;
-    while ((m = styleRegex.exec(last.content)) !== null) {
-      const prop = m[1].trim().toLowerCase();
-      const val = m[2].trim();
-      const root = document.documentElement;
-      switch (prop) {
-        case "dark":
-          document.documentElement.classList.add("dark");
-          localStorage.setItem("pivot-theme", "dark");
-          break;
-        case "light":
-          document.documentElement.classList.remove("dark");
-          localStorage.setItem("pivot-theme", "light");
-          break;
-        case "bg":
-          document.body.style.background = val;
-          document.getElementById("root")!.style.background = val;
-          localStorage.setItem("pivot-ui-bg", val);
-          break;
-        case "sidebar-bg":
-          root.style.setProperty("--pivot-ui-sidebar-bg", val);
-          localStorage.setItem("pivot-ui-sidebar-bg", val);
-          break;
-        case "radius":
-          root.style.setProperty("--pivot-ui-radius", val);
-          [...document.querySelectorAll<HTMLElement>(".rounded-chrome")].forEach(el => el.style.borderRadius = val);
-          localStorage.setItem("pivot-ui-radius", val);
-          break;
-        case "font-size":
-          document.body.style.fontSize = val;
-          localStorage.setItem("pivot-ui-font-size", val);
-          break;
-      }
-      console.log(`[Pivot] browser-style: ${prop} = ${val}`);
-    }
-  }, [messages]);
+
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

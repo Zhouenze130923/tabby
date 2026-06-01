@@ -132,7 +132,45 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
                 onAccentColor(match[1]);
               }
             }
-            // Check for tab action commands in complete response
+            // Check for browser-style commands and execute IMMEDIATELY
+            if (fullContent) {
+              const styleRegex = /\[browser-style:\s*(\w+)\s*,?\s*([^\]]*)\]/g;
+              let m;
+              while ((m = styleRegex.exec(fullContent)) !== null) {
+                const prop = m[1].trim().toLowerCase();
+                const val = m[2].trim();
+                try {
+                  switch (prop) {
+                    case "dark":
+                      document.documentElement.classList.add("dark");
+                      localStorage.setItem("pivot-theme", "dark");
+                      break;
+                    case "light":
+                      document.documentElement.classList.remove("dark");
+                      localStorage.setItem("pivot-theme", "light");
+                      break;
+                    case "bg":
+                      document.body.style.background = val;
+                      const root = document.getElementById("root");
+                      if (root) root.style.background = val;
+                      localStorage.setItem("pivot-ui-bg", val);
+                      break;
+                    case "sidebar-bg":
+                      document.documentElement.style.setProperty("--pivot-ui-sidebar-bg", val);
+                      localStorage.setItem("pivot-ui-sidebar-bg", val);
+                      break;
+                    case "font-size":
+                      document.body.style.fontSize = val;
+                      localStorage.setItem("pivot-ui-font-size", val);
+                      break;
+                  }
+                  console.log(`[Pivot] browser-style: ${prop} = ${val}`);
+                } catch (e) {
+                  console.error("[Pivot] browser-style error:", e);
+                }
+              }
+            }
+            // Check for tab action commands
             if (onTabAction && fullContent) {
               const tabRegex = /\[tab-action:\s*(\w+)\s*,?\s*([^\]]*)\]/g;
               let tabMatch;
