@@ -25,7 +25,7 @@ export default function NewTabPage({ onAiSearch }: NewTabPageProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-b from-gray-50 to-white dark:from-zinc-950 dark:to-zinc-900 min-h-0">
+    <div className="flex-1 flex flex-col items-center justify-center min-h-0" style={{ background: "var(--pivot-ui-bg)" }}>
       <div className="w-full max-w-2xl px-6 -mt-16">
         {/* Logo / Title */}
         <div className="text-center mb-10">
