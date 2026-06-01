@@ -117,9 +117,10 @@ Respond in Chinese.`;
     systemPrompt,
   });
 
-  // 监听 AI 输出中的 tab-action 标记（按消息条数索引，避免流式分片重复执行）
+  // 监听 AI 输出中的 tab-action 标记（仅在流完成后处理）
   const processedMsgCount = useRef(0);
   useEffect(() => {
+    if (loading) return; // 流式输出中，等完成后再处理
     if (messages.length <= processedMsgCount.current) return;
     const last = messages[messages.length - 1];
     if (!last || last.role !== "assistant") return;
@@ -316,45 +317,9 @@ Respond in Chinese.`;
   }, [initialQuery, loading, searching]);
 
   const handleAiSearch = async (query: string) => {
-    // 默认直接对话，只有明确要求搜索才联网
-    const wantsSearch = (/搜索|查找|找一下|查一下|查点|查个|搜一下|最新|今天|新闻|天气|价格|对比|是什么|怎么样/i.test(query) ||
-                        /好不好|好不好用|值不值得|推荐|哪个好|区别|对比|排名|排行|趋势/i.test(query)) &&
-                        !/不搜索|别搜索|不要搜|不用搜|不查|不联网|别联网/i.test(query);
-
-    if (!wantsSearch) {
-      // 默认：直接发给 AI
-      send(query, includeContext);
-      return;
-    }
-
-    // 明确要求搜索时才联网
-    setSearching(true);
-    try {
-      const searchRes = await window.tabby.search.query(query);
-      setSearching(false);
-
-      if (searchRes.error) {
-        console.error("search error:", searchRes.error);
-        const errorMsg = `[联网检索失败: ${searchRes.error}]\n\n---\n\n用户提问: ${query}`;
-        send(errorMsg, false);
-        return;
-      }
-
-      if (!searchRes.results?.length) {
-        send(query, includeContext);
-        return;
-      }
-
-      const sources = searchRes.results
-        .slice(0, 6)
-        .map((r, i) => `[${i + 1}] ${r.title}\n  来源: ${r.url}\n  摘要: ${r.content}`)
-        .join("\n\n");
-      const deepPrompt = `用户提问: ${query}\n\n以下是从互联网搜索到的相关信息：\n\n${sources}\n\n请基于以上搜索结果，用中文综合回答用户的问题。在回答末尾列出信息来源。如果搜索结果不足以回答，请如实说明。`;
-      send(deepPrompt, false);
-    } catch {
-      setSearching(false);
-      send(query, includeContext);
-    }
+    // 所有消息直接发给 AI，由 AI 自行判断是否需要联网搜索
+    // AI 如果需要在回复中包含 [search: 查询内容] 来触发联网检索
+    send(query, includeContext);
   };
 
   const handleSend = () => {

@@ -53,6 +53,7 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
   const abortRef = useRef<AbortController | null>(null);
   const onAccentColor = options?.onAccentColor;
   const onTabAction = options?.onTabAction;
+  const searchingRef = useRef(false);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -172,6 +173,22 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
                   console.error("[Pivot] browser-style error:", e);
                 }
               }
+            }
+            // Check for AI-requested search: [search: query]
+            const searchMatch = fullContent.match(/\[search:\s*([^\]]+)\]/);
+            if (!searchingRef.current && searchMatch) {
+              searchingRef.current = true;
+              const searchQuery = searchMatch[1].trim();
+              (window as any).tabby.search.query(searchQuery).then((res: any) => {
+                if (!res.error && res.results?.length) {
+                  const sources = res.results.slice(0, 5)
+                    .map((r: any, i: number) => `[${i+1}] ${r.title}\n来源: ${r.url}\n摘要: ${r.content}`)
+                    .join("\n\n");
+                  send(`联网搜索结果如下:\n\n${sources}\n\n请基于以上搜索结果回答用户的原始问题。如果搜索结果不够，请如实说明。`);
+                } else {
+                  searchingRef.current = false;
+                }
+              }).catch(() => { searchingRef.current = false; });
             }
             // Check for tab action commands
             if (onTabAction && fullContent) {

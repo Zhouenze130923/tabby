@@ -148,6 +148,7 @@ export default function WebView({ onAiSearch }: { onAiSearch?: (query: string) =
             data-tab-id={tab.id}
             ref={setWebviewRef(tab.id)}
             src={tab.url}
+            allowpopups="true"
             style={{
               position: "absolute",
               inset: 0,
