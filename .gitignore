@@ -7,4 +7,4 @@ release/
 *.new
 src/preload/bridge.js
 src/preload/bridge.js.map
-.tabby.db
+.pivot.db

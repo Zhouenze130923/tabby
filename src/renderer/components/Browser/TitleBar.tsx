@@ -7,7 +7,7 @@ export default function TitleBar({ setShowSidePanel, showSidePanel, onOpenSettin
 }) {
   return (
     <div className="flex items-center h-9 px-3 bg-gray-100 dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-700 draggable-area shrink-0">
-      <span className="text-sm font-medium text-gray-600 dark:text-gray-300 ml-8">Tabby</span>
+      <span className="text-sm font-medium text-gray-600 dark:text-gray-300 ml-8">Pivot</span>
       <div className="flex-1" />
       <button
         onClick={onOpenSettings}

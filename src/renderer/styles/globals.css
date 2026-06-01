@@ -3,9 +3,9 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --tabby-accent: #3b82f6;
-  --tabby-accent-light: #3b82f633;
-  --tabby-accent-ring: #3b82f680;
+  --pivot-accent: #3b82f6;
+  --pivot-accent-light: #3b82f633;
+  --pivot-accent-ring: #3b82f680;
 }
 
 body {
@@ -27,35 +27,35 @@ body {
   user-select: none;
 }
 .resize-handle:hover {
-  background-color: var(--tabby-accent);
+  background-color: var(--pivot-accent);
 }
 .resize-handle:active {
-  background-color: var(--tabby-accent);
+  background-color: var(--pivot-accent);
 }
 
 /* Accent color overrides for Tailwind-like elements */
-.accent-bg { background-color: var(--tabby-accent); }
-.accent-bg\/10 { background-color: color-mix(in srgb, var(--tabby-accent) 10%, transparent); }
-.accent-bg\/20 { background-color: color-mix(in srgb, var(--tabby-accent) 20%, transparent); }
-.accent-text { color: var(--tabby-accent); }
-.accent-border { border-color: var(--tabby-accent); }
-:focus.accent-ring, .accent-ring:focus { --tw-ring-color: var(--tabby-accent-ring); box-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color); }
-.accent-spin { border-color: var(--tabby-accent); border-top-color: transparent; }
+.accent-bg { background-color: var(--pivot-accent); }
+.accent-bg\/10 { background-color: color-mix(in srgb, var(--pivot-accent) 10%, transparent); }
+.accent-bg\/20 { background-color: color-mix(in srgb, var(--pivot-accent) 20%, transparent); }
+.accent-text { color: var(--pivot-accent); }
+.accent-border { border-color: var(--pivot-accent); }
+:focus.accent-ring, .accent-ring:focus { --tw-ring-color: var(--pivot-accent-ring); box-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color); }
+.accent-spin { border-color: var(--pivot-accent); border-top-color: transparent; }
 
 /* Hover states */
-.accent-bg-hover:hover { background-color: var(--tabby-accent); }
-.accent-bg-hover\/90:hover { background-color: color-mix(in srgb, var(--tabby-accent) 90%, black); }
+.accent-bg-hover:hover { background-color: var(--pivot-accent); }
+.accent-bg-hover\/90:hover { background-color: color-mix(in srgb, var(--pivot-accent) 90%, black); }
 
 /* Disabled state */
-.accent-bg-disabled:disabled { background-color: color-mix(in srgb, var(--tabby-accent) 60%, transparent); }
+.accent-bg-disabled:disabled { background-color: color-mix(in srgb, var(--pivot-accent) 60%, transparent); }
 
 /* Dark mode accent overrides */
-.dark .accent-text-dark { color: var(--tabby-accent); }
-.dark .accent-border-dark { border-color: var(--tabby-accent); }
-.dark .accent-bg-subtle { background-color: color-mix(in srgb, var(--tabby-accent) 15%, transparent); }
-.dark .accent-border-subtle { border-color: color-mix(in srgb, var(--tabby-accent) 40%, transparent); }
-.dark .accent-text-subtle { color: var(--tabby-accent); opacity: 0.8; }
-.dark .accent-bg-disabled:disabled { background-color: color-mix(in srgb, var(--tabby-accent) 50%, transparent); }
+.dark .accent-text-dark { color: var(--pivot-accent); }
+.dark .accent-border-dark { border-color: var(--pivot-accent); }
+.dark .accent-bg-subtle { background-color: color-mix(in srgb, var(--pivot-accent) 15%, transparent); }
+.dark .accent-border-subtle { border-color: color-mix(in srgb, var(--pivot-accent) 40%, transparent); }
+.dark .accent-text-subtle { color: var(--pivot-accent); opacity: 0.8; }
+.dark .accent-bg-disabled:disabled { background-color: color-mix(in srgb, var(--pivot-accent) 50%, transparent); }
 
 /* Markdown content styling */
 .markdown-content p { margin-bottom: 0.5rem; }
@@ -83,7 +83,7 @@ body {
   padding: 0;
 }
 .markdown-content strong { font-weight: 600; }
-.markdown-content a { color: var(--tabby-accent); text-decoration: underline; }
+.markdown-content a { color: var(--pivot-accent); text-decoration: underline; }
 .markdown-content blockquote {
   border-left: 3px solid #d1d5db;
   padding-left: 0.75rem;

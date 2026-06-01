@@ -1,5 +1,5 @@
 appId: com.tabby.browser
-productName: Tabby
+productName: Pivot
 directories:
   output: release
 files:

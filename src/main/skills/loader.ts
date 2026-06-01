@@ -125,11 +125,11 @@ export function loadSkills(): Skill[] {
           skills.push(skill);
         }
       } catch (err) {
-        console.error(`[Tabby] Failed to load skill ${file}:`, err);
+        console.error(`[Pivot] Failed to load skill ${file}:`, err);
       }
     }
   } catch (err) {
-    console.error("[Tabby] Failed to read skills directory:", err);
+    console.error("[Pivot] Failed to read skills directory:", err);
   }
 
   // In development, also try the project root's skills dir

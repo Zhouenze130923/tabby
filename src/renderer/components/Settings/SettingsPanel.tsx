@@ -315,7 +315,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 <span className="text-gray-900 dark:text-gray-100">Electron + React + SQLite</span>
               </div>
               <p className="text-gray-400 dark:text-gray-500 pt-4 text-xs">
-                Tabby — AI 原生浏览器。自备 API Key，数据全本地存储。
+                Pivot — AI 原生浏览器。自备 API Key，数据全本地存储。
               </p>
             </div>
           )}

@@ -4,7 +4,7 @@ import path from "path";
 import { SCHEMA } from "./schema";
 import { runMigrations } from "./migration";
 
-const dbPath = path.join(app.getPath("userData"), "tabby.db");
+const dbPath = path.join(app.getPath("userData"), "pivot.db");
 const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 

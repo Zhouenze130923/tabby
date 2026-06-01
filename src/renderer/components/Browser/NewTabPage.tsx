@@ -31,7 +31,7 @@ export default function NewTabPage({ onAiSearch }: NewTabPageProps) {
         <div className="text-center mb-10">
           <div className="text-5xl mb-4">🦊</div>
           <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">
-            Tabby
+            Pivot
           </h1>
           <p className="text-sm text-gray-400 dark:text-zinc-500 mt-2">
             AI 原生浏览器 · 深度搜索

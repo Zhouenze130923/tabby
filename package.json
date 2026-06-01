@@ -1,7 +1,7 @@
 {
-  "name": "tabby",
+  "name": "pivot",
   "version": "0.1.0",
-  "description": "AI 原生浏览器 — 自备 API Key，比 Tabbit 更强大",
+  "description": "AI 原生浏览器 — 自备 API Key，Pivot — AI 原生浏览器",
   "author": "周恩泽 <zhouenze130923@outlook.com>",
   "main": "dist/main/index.js",
   "scripts": {
