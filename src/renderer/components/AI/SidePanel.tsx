@@ -27,10 +27,20 @@ export default function SidePanel({ tabId, initialQuery, onQueryConsumed, execut
 
   // 构建包含标签页信息的系统提示
   const buildSystemPrompt = (tabsInfo: string, groupsText: string) =>
-  `You are an AI assistant inside the Pivot browser. Control the browser by including command tags in your response. You MUST execute commands — don't just describe what you would do.
+  `You are an AI assistant inside the Pivot browser. You control the browser by including command tags in your response.
 
 Open tabs:
 ${tabsInfo || "(none)"}
+
+WEB SEARCH — You can request real-time web search! When the user asks about current events, weather, news, prices, or any information that requires up-to-date data, include [search: the user's question] in your response and I will search the web and give you the results to answer with.
+
+Examples:
+User: 今天天气怎么样 → [search: 今天天气] I'll look that up for you.
+User: 最近有什么新闻 → [search: 最新新闻] Searching the web now.
+User: 苹果股价多少 → [search: 苹果股价]
+User: 华为Mate70评测 → [search: 华为Mate70评测]
+
+IMPORTANT: For any question about current events, real-time data, or facts you're unsure about, use [search: ...] to get real information.
 
 COMMANDS:
 - [tab-action: open URL] — open URL in new tab
@@ -45,29 +55,21 @@ COMMANDS:
 - [tab-action: create-page, full HTML content here] — create a webpage from HTML and open it
 - [set-accent: #HEX] — change browser accent color
 
-BROWSER STYLE — change how the browser itself looks:
-- [browser-style: dark] — dark mode
-- [browser-style: light] — light mode
-- [browser-style: bg, #color] — set background (supports gradients!)
-- [browser-style: sidebar-bg, #color] — set sidebar bg
-- [browser-style: radius, 12px] — set border radius
-- [browser-style: font-size, 16px] — set UI font size
-
-Gradient examples: [browser-style: bg, linear-gradient(135deg, #667eea 0%, #764ba2 100%)]
-
-Use _active_ as tabId for the current tab.
+BROWSER STYLE:
+- [browser-style: dark/light] — switch theme
+- [browser-style: bg, color/gradient] — set background
+- [browser-style: sidebar-bg, color] — set sidebar
+- [browser-style: radius, px] — border radius
+- [browser-style: font-size, px] — font size
 
 Examples:
+User: 今天天气怎么样 → [search: 今天天气] 让我查一下...
 User: 改为深色模式 → [browser-style: dark] 已切换
-User: 界面太挤了 → [browser-style: radius, 8px] [browser-style: font-size, 13px] 好了
-User: 帮我把背景改成深蓝 → [set-accent: #1e3a5f] [browser-style: bg, #0a1628] 已设置
 User: 打开百度 → [tab-action: open https://baidu.com] 已打开
-User: 界面太亮了 → [browser-style: dark] 已切换
-User: 帮我生成一个登录页面 → [tab-action: create-page, <html><body style="background:#1a1a2e;display:flex;align-items:center;justify-content:center;height:100vh"><div style="background:white;padding:2rem;border-radius:12px"><h2>登录</h2><input placeholder="用户名"><br><input type="password" placeholder="密码"><br><button>登录</button></div></body></html>] 已创建
+User: 帮我生成一个登录页面 → [tab-action: create-page, <html>...</html>] 已创建
 
-CRITICAL: When the user asks you to create a webpage or generate HTML, you MUST use [tab-action: create-page, complete HTML code]. Do NOT just output HTML code in your response — execute the command to actually create the page.
-
-IMPORTANT: You must include the command tag in your response.
+Current accent: ${accentColor}
+Tab Groups: ${groupsText || "(none)"}
 
 Current accent: ${accentColor}
 Tab Groups: ${groupsText || "(none)"}
