@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useChat } from "./hooks";
 import { useThemeStore } from "../../stores/themeStore";
+import { useTabGroupStore } from "../../stores/tabGroupStore";
 
 interface SidePanelProps {
   tabId: string | null;
@@ -17,11 +18,12 @@ export default function SidePanel({ tabId, initialQuery, onQueryConsumed }: Side
   const [includeContext, setIncludeContext] = useState(true);
   const [searching, setSearching] = useState(false);
   const [tabList, setTabList] = useState<string>("");
+  const [groupInfo, setGroupInfo] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initialSent = useRef(false);
 
   // 构建包含标签页信息的系统提示
-  const buildSystemPrompt = (tabsInfo: string) =>
+  const buildSystemPrompt = (tabsInfo: string, groupsText: string) =>
     `You are a helpful assistant inside a browser. I will handle web searches for you — you don't need to search.
 
 Open tabs:
@@ -34,10 +36,17 @@ When the user asks you to open a website, switch tabs, close tabs, or navigate, 
 - [tab-action: navigate tab_xxx, https://example.com] — navigate a tab to URL
 - [tab-action: content tab_xxx] — read the page text from a tab
 
+Tab group commands:
+- [tab-action: classify] — analyze all open tabs and group them by category (shopping, social, work, entertainment, etc.)
+- [tab-action: group Name, tabId1, tabId2] — create or reassign a named group (use tab IDs from the list above)
+
 Theme command:
 - [set-accent: #ff0000] — change theme color
 
 Current accent: ${accentColor}
+
+Tab Groups:
+${groupsText || "(none yet)"}
 Respond in Chinese.`;
 
   // 加载标签页列表
@@ -55,10 +64,32 @@ Respond in Chinese.`;
     return unsub;
   }, []);
 
+  // 订阅标签组变化
+  useEffect(() => {
+    const updateGroups = () => {
+      const groups = useTabGroupStore.getState().groups;
+      if (groups.length === 0) {
+        setGroupInfo("");
+        return;
+      }
+      setGroupInfo(
+        groups
+          .map(
+            (g) =>
+              `- "${g.name}" (${g.tabIds.length} tabs) — tabs: ${g.tabIds.map((id) => id.slice(0, 8)).join(", ")}`,
+          )
+          .join("\n"),
+      );
+    };
+    updateGroups();
+    const unsub = useTabGroupStore.subscribe(updateGroups);
+    return unsub;
+  }, []);
+
   const [systemPrompt, setSystemPrompt] = useState("");
   useEffect(() => {
-    setSystemPrompt(buildSystemPrompt(tabList));
-  }, [tabList, accentColor]);
+    setSystemPrompt(buildSystemPrompt(tabList, groupInfo));
+  }, [tabList, accentColor, groupInfo]);
 
   const { messages, loading, error, send, clear, abort } = useChat({
     onAccentColor: setAccentColor,
@@ -90,6 +121,23 @@ Respond in Chinese.`;
               const tid = args.slice(0, idx).trim();
               const url = args.slice(idx + 1).trim();
               window.tabby.tab.navigate(tid, url);
+            }
+            break;
+          }
+          case "classify": {
+            // AI 自动分类所有标签页
+            window.tabby.tab.getAllInfo().then((tabs) => {
+              useTabGroupStore.getState().autoClassify(tabs);
+            });
+            break;
+          }
+          case "group": {
+            // 格式: group 组名, tabId1, tabId2, ...
+            const parts = args.split(",").map((s) => s.trim());
+            const groupName = parts[0];
+            const tabIds = parts.slice(1).filter((id) => id.length > 0);
+            if (groupName) {
+              useTabGroupStore.getState().createGroup(groupName, tabIds);
             }
             break;
           }

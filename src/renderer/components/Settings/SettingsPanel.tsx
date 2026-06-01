@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import ProviderConfig from "./ProviderConfig";
-import { X, Key, SlidersHorizontal, Info, Search } from "lucide-react";
+import ImportPanel from "../Import/ImportPanel";
+import { X, Key, SlidersHorizontal, Info, Search, Download } from "lucide-react";
 
-type Tab = "apiKeys" | "search" | "general" | "about";
+type Tab = "apiKeys" | "search" | "general" | "about" | "import";
 
 const PROVIDER_META: Record<
   string,
@@ -82,6 +83,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     { id: "search", label: "搜索", icon: <Search size={16} /> },
     { id: "general", label: "通用", icon: <SlidersHorizontal size={16} /> },
     { id: "about", label: "关于", icon: <Info size={16} /> },
+    { id: "import", label: "导入", icon: <Download size={16} /> },
   ];
 
   return (
@@ -295,6 +297,15 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                   ))}
                 </select>
               </div>
+            </div>
+          )}
+
+          {activeTab === "import" && (
+            <div>
+              <h3 className="text-base font-medium text-gray-900 dark:text-gray-100 mb-4">
+                从其他浏览器导入书签
+              </h3>
+              <ImportPanel />
             </div>
           )}
 

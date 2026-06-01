@@ -7,6 +7,7 @@ import {
   close as closeDb,
 } from "../storage/db";
 import { loadSkills, getSkill, executeSkill } from "../skills/loader";
+import { importFromChrome, importFromSafari, importFromFirefox, importFromAll } from "../import/browsers";
 import { DeepSeekProvider } from "../ai/providers/deepseek";
 import { ClaudeProvider } from "../ai/providers/claude";
 import { getSearchProvider } from "../search/engine";
@@ -278,6 +279,15 @@ export function registerHandlers(mainWindow: BrowserWindow) {
     return history.search(query);
   });
 
+  ipcMain.handle("history:list", (_e, opts?: {limit?: number; offset?: number; query?: string}) => {
+    return history.list(opts);
+  });
+
+  ipcMain.handle("history:clear", () => {
+    history.clear();
+    return { success: true };
+  });
+
   // —— Skills ——
   ipcMain.handle("skills:list", () => {
     return loadSkills();
@@ -306,6 +316,12 @@ export function registerHandlers(mainWindow: BrowserWindow) {
       return `Error: ${err.message}`;
     }
   });
+
+  // —— 浏览器书签导入 ——
+  ipcMain.handle("import:fromChrome", () => importFromChrome());
+  ipcMain.handle("import:fromSafari", () => importFromSafari());
+  ipcMain.handle("import:fromFirefox", () => importFromFirefox());
+  ipcMain.handle("import:fromAll", () => importFromAll());
 
   // —— 搜索 ——
   ipcMain.handle("search:query", async (_e, query: string) => {

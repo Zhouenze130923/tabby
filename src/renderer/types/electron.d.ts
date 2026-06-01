@@ -122,10 +122,18 @@ interface Window {
     };
     history: {
       search: (query: string) => Promise<any[]>;
+      list: (opts?: {limit?: number; offset?: number; query?: string}) => Promise<{entries: any[]; total: number}>;
+      clear: () => Promise<{success: boolean}>;
     };
     skills: {
       list: () => Promise<any[]>;
       run: (name: string, context?: Record<string, string>) => Promise<string>;
+    };
+    import: {
+      fromChrome: () => Promise<ImportResult>;
+      fromSafari: () => Promise<ImportResult>;
+      fromFirefox: () => Promise<ImportResult>;
+      fromAll: () => Promise<ImportResult[]>;
     };
     search: {
       query: (q: string) => Promise<{results: SearchResult[]; answer?: string; error?: string}>;
@@ -147,6 +155,13 @@ interface SearchResult {
   url: string;
   content: string;
   score?: number;
+}
+
+interface ImportResult {
+  browser: string;
+  count: number;
+  success: boolean;
+  error?: string;
 }
 
 interface SearchConfig {

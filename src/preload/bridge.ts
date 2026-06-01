@@ -65,6 +65,8 @@ const api = {
   },
   history: {
     search: (query: string) => ipcRenderer.invoke("history:search", query),
+    list: (opts?: {limit?: number; offset?: number; query?: string}) => ipcRenderer.invoke("history:list", opts),
+    clear: () => ipcRenderer.invoke("history:clear"),
   },
 
   // Skills
@@ -72,6 +74,14 @@ const api = {
     list: () => ipcRenderer.invoke("skills:list"),
     run: (name: string, context?: Record<string, string>) =>
       ipcRenderer.invoke("skills:run", name, context),
+  },
+
+  // 浏览器书签导入
+  import: {
+    fromChrome: () => ipcRenderer.invoke("import:fromChrome"),
+    fromSafari: () => ipcRenderer.invoke("import:fromSafari"),
+    fromFirefox: () => ipcRenderer.invoke("import:fromFirefox"),
+    fromAll: () => ipcRenderer.invoke("import:fromAll"),
   },
 
   // 搜索

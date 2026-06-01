@@ -8,12 +8,16 @@ import SidePanel from "./components/AI/SidePanel";
 import TitleBar from "./components/Browser/TitleBar";
 import ErrorBoundary from "./components/ErrorBoundary";
 import SettingsPanel from "./components/Settings/SettingsPanel";
+import HistoryPanel from "./components/History/HistoryPanel";
+import TipsPanel from "./components/Tips/TipsPanel";
 
 export default function App() {
   const activeTabId = useTabStore((s) => s.activeTabId);
   const accentColor = useThemeStore((s) => s.accentColor);
   const [showSidePanel, setShowSidePanel] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [showTips, setShowTips] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [aiSearchQuery, setAiSearchQuery] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const initialized = useRef(false);
@@ -74,7 +78,13 @@ export default function App() {
   return (
     <ErrorBoundary>
     <div className="flex flex-col h-screen bg-white dark:bg-zinc-900">
-      <TitleBar setShowSidePanel={setShowSidePanel} showSidePanel={showSidePanel} onOpenSettings={() => setShowSettings(true)} />
+      <TitleBar
+        setShowSidePanel={setShowSidePanel}
+        showSidePanel={showSidePanel}
+        onOpenSettings={() => setShowSettings(true)}
+        onOpenTips={() => setShowTips(true)}
+        onOpenHistory={() => setShowHistory(true)}
+      />
       <TabBar />
       <AddressBar onAiSearch={(query) => { setShowSidePanel(true); setAiSearchQuery(query); }} />
       <div className="flex flex-1 overflow-hidden">
@@ -99,6 +109,8 @@ export default function App() {
         )}
       </div>
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+      {showTips && <TipsPanel onClose={() => setShowTips(false)} />}
+      {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
     </div>
     </ErrorBoundary>
   );
