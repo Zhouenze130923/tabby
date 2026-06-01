@@ -101,7 +101,7 @@ export default function WebView({ onAiSearch }: { onAiSearch?: (query: string) =
       // about:blank 的初始加载由 JSX src 属性处理，这里不重复赋值
       if (tab.url && tab.url !== prevSet && tab.url !== "about:blank") {
         lastSetUrl.current.set(tab.id, tab.url);
-        wv.src = tab.url;
+        try { wv.loadURL(tab.url); } catch { wv.src = tab.url; }
       }
     });
   }, [tabs]);
