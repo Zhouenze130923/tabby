@@ -317,8 +317,9 @@ Respond in Chinese.`;
 
   const handleAiSearch = async (query: string) => {
     // 默认直接对话，只有明确要求搜索才联网
-    const wantsSearch = /搜索|查找|找一下|查一下|查点|查个|搜一下/i.test(query) &&
-                        !/不搜索|别搜索|不要搜|不用搜|不查/i.test(query);
+    const wantsSearch = (/搜索|查找|找一下|查一下|查点|查个|搜一下|最新|今天|新闻|天气|价格|对比|是什么|怎么样/i.test(query) ||
+                        /好不好|好不好用|值不值得|推荐|哪个好|区别|对比|排名|排行|趋势/i.test(query)) &&
+                        !/不搜索|别搜索|不要搜|不用搜|不查|不联网|别联网/i.test(query);
 
     if (!wantsSearch) {
       // 默认：直接发给 AI
