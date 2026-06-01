@@ -129,6 +129,20 @@ const api = {
     },
   },
 
+  // 对话历史
+  conversations: {
+    list: () => ipcRenderer.invoke("conversations:list"),
+    create: (title?: string) => ipcRenderer.invoke("conversations:create", title),
+    remove: (id: string) => ipcRenderer.invoke("conversations:remove", id),
+    rename: (id: string, title: string) => ipcRenderer.invoke("conversations:rename", id, title),
+  },
+  messages: {
+    list: (conversationId: string) => ipcRenderer.invoke("messages:list", conversationId),
+    add: (conversationId: string, role: string, content: string) =>
+      ipcRenderer.invoke("messages:add", conversationId, role, content),
+    clear: (conversationId: string) => ipcRenderer.invoke("messages:clear", conversationId),
+  },
+
   // 窗口控制
   window: {
     minimize: () => ipcRenderer.invoke("window:minimize"),
@@ -138,6 +152,9 @@ const api = {
     onMaximizedChange: (cb: (maximized: boolean) => void) => {
       ipcRenderer.on("window:maximizedChanged", (_event, maximized) => cb(maximized));
     },
+    enterFloat: () => ipcRenderer.invoke("window:enterFloat"),
+    exitFloat: () => ipcRenderer.invoke("window:exitFloat"),
+    isFloating: () => ipcRenderer.invoke("window:isFloating"),
   },
 };
 

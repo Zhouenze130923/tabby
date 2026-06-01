@@ -1,9 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useChat } from "./hooks";
+import { useChat, ChatMessage } from "./hooks";
 import { useThemeStore } from "../../stores/themeStore";
 import { useTabGroupStore } from "../../stores/tabGroupStore";
+import { userMemory } from "../../stores/userMemoryStore";
+import ConversationPanel from "../History/ConversationPanel";
 
 interface SidePanelProps {
   tabId: string | null;
@@ -20,10 +22,42 @@ export default function SidePanel({ tabId, initialQuery, onQueryConsumed, execut
   const [includeContext, setIncludeContext] = useState(true);
   const [searching, setSearching] = useState(false);
   const [tabList, setTabList] = useState<string>("");
-  const pendingPromptRef = useRef(false);
   const [groupInfo, setGroupInfo] = useState<string>("");
+  const [showHistory, setShowHistory] = useState(false);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [conversationTitle, setConversationTitle] = useState("新对话");
+  const pendingPromptRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initialSent = useRef(false);
+  // Track saved messages to avoid duplicate saves
+  const lastSavedCountRef = useRef(0);
+  const conversationInitialized = useRef(false);
+
+  // Build user memory string for the system prompt
+  const buildUserMemoryStr = useCallback((): string => {
+    try {
+      const memory = userMemory.get();
+      const parts: string[] = [];
+
+      if (memory.preferences && Object.keys(memory.preferences).length > 0) {
+        parts.push("用户偏好: " + Object.entries(memory.preferences)
+          .map(([k, v]) => `${k}: ${v}`).join(", "));
+      }
+
+      if (memory.commonTopics && memory.commonTopics.length > 0) {
+        parts.push("用户常讨论的主题: " + memory.commonTopics.join(", "));
+      }
+
+      if (memory.factsLearned && memory.factsLearned.length > 0) {
+        const recentFacts = memory.factsLearned.slice(-5);
+        parts.push("关于用户: " + recentFacts.join("; "));
+      }
+
+      return parts.length > 0 ? "\n\n[用户记忆]\n" + parts.join("\n") : "";
+    } catch {
+      return "";
+    }
+  }, []);
 
   // 构建包含标签页信息的系统提示
   const buildSystemPrompt = (tabsInfo: string, groupsText: string) =>
@@ -73,7 +107,7 @@ Tab Groups: ${groupsText || "(none)"}
 
 Current accent: ${accentColor}
 Tab Groups: ${groupsText || "(none)"}
-Respond in Chinese.`;
+Respond in Chinese.${buildUserMemoryStr()}`;
 
   // 加载标签页列表
   useEffect(() => {
@@ -85,7 +119,6 @@ Respond in Chinese.`;
       } catch {}
     };
     loadTabs();
-    // 监听标签页变化刷新列表
     const unsub = window.tabby.tab.onUpdate(() => loadTabs());
     return unsub;
   }, []);
@@ -112,12 +145,81 @@ Respond in Chinese.`;
     return unsub;
   }, []);
 
+  // Initialize a new conversation on mount
+  useEffect(() => {
+    if (conversationInitialized.current) return;
+    conversationInitialized.current = true;
+    createNewConversation();
+  }, []);
+
+  const createNewConversation = useCallback(async () => {
+    try {
+      const conv = await window.tabby.conversations.create();
+      setCurrentConversationId(conv.id);
+      setConversationTitle(conv.title);
+      clear();
+      lastSavedCountRef.current = 0;
+    } catch (err) {
+      console.error("Failed to create conversation:", err);
+    }
+  }, []);
+
+  const loadConversationById = useCallback(async (conversationId: string) => {
+    try {
+      // Load messages from DB
+      const msgs = await window.tabby.messages.list(conversationId);
+      const chatMsgs: ChatMessage[] = msgs.map((m) => ({
+        role: m.role as "user" | "assistant" | "system",
+        content: m.content,
+      }));
+      // Set them in the hook
+      loadMessages(chatMsgs);
+      setCurrentConversationId(conversationId);
+      lastSavedCountRef.current = chatMsgs.filter(
+        (m) => m.role === "user" || m.role === "assistant"
+      ).length;
+    } catch (err) {
+      console.error("Failed to load conversation:", err);
+    }
+  }, []);
+
+  // Save messages after each response round
+  const handleAfterResponse = useCallback(
+    async (userMsg: ChatMessage, assistantMsg: ChatMessage) => {
+      if (!currentConversationId) return;
+      try {
+        await window.tabby.messages.add(currentConversationId, userMsg.role, userMsg.content);
+        await window.tabby.messages.add(currentConversationId, assistantMsg.role, assistantMsg.content);
+        lastSavedCountRef.current += 2;
+
+        // Extract title from first user message
+        const msgs = await window.tabby.messages.list(currentConversationId);
+        if (msgs.length === 2) {
+          // First exchange — auto-title from user's first message
+          const firstUserMsg = msgs.find((m) => m.role === "user");
+          if (firstUserMsg) {
+            const title = firstUserMsg.content.slice(0, 30) + (firstUserMsg.content.length > 30 ? "…" : "");
+            await window.tabby.conversations.rename(currentConversationId, title);
+            setConversationTitle(title);
+          }
+        }
+
+        // Update user memory after conversation
+        try {
+          userMemory.updateFromMessages([userMsg, assistantMsg]);
+        } catch {}
+      } catch (err) {
+        console.error("Failed to save messages:", err);
+      }
+    },
+    [currentConversationId]
+  );
+
   const [systemPrompt, setSystemPrompt] = useState("");
   useEffect(() => {
     setSystemPrompt(buildSystemPrompt(tabList, groupInfo));
   }, [tabList, accentColor, groupInfo]);
 
-  // 在 hooks 的 done 回调中直接执行 tab-action，比 useEffect 更可靠
   // 在 hooks 的 done 回调中直接执行 tab-action
   const onTabActionRef = useRef(async (action: any) => {
     try {
@@ -137,7 +239,6 @@ Respond in Chinese.`;
           break;
         }
         case "schedule": {
-          // schedule: {name, intervalMs, prompt, tabUrl}
           await window.tabby.tasks.create(action.task);
           break;
         }
@@ -145,9 +246,10 @@ Respond in Chinese.`;
     } catch (e) { console.error("onTabAction error:", e); }
   });
 
-  const { messages, loading, error, send, clear, abort } = useChat({
+  const { messages, loading, error, send, clear, abort, loadMessages } = useChat({
     onAccentColor: setAccentColor,
     onTabAction: (action) => { onTabActionRef.current(action); },
+    onAfterResponse: handleAfterResponse,
     systemPrompt,
   });
 
@@ -167,7 +269,7 @@ Respond in Chinese.`;
       let args = match[2].trim();
       // Replace _active_ with the current tab ID in the first argument
       if (args.startsWith("_active_")) {
-        const rest = args.slice(8).trim(); // after "_active_,"
+        const rest = args.slice(8).trim();
         args = (tabId || "") + (rest ? "," + rest : "");
       }
       try {
@@ -185,14 +287,12 @@ Respond in Chinese.`;
             break;
           }
           case "classify": {
-            // AI 自动分类所有标签页
             window.tabby.tab.getAllInfo().then((tabs) => {
               useTabGroupStore.getState().autoClassify(tabs);
             });
             break;
           }
           case "group": {
-            // 格式: group 组名, tabId1, tabId2, ...
             const parts = args.split(",").map((s) => s.trim());
             const groupName = parts[0];
             const tabIds = parts.slice(1).filter((id) => id.length > 0);
@@ -202,7 +302,6 @@ Respond in Chinese.`;
             break;
           }
           case "click": {
-            // 格式: click tabId, selector
             const sep = args.indexOf(",");
             if (sep > 0) {
               const tid = args.slice(0, sep).trim();
@@ -212,7 +311,6 @@ Respond in Chinese.`;
             break;
           }
           case "type": {
-            // 格式: type tabId, selector, text
             const parts = args.split(",").map((s) => s.trim());
             if (parts.length >= 3) {
               const tid = parts[0];
@@ -223,7 +321,6 @@ Respond in Chinese.`;
             break;
           }
           case "extract": {
-            // 格式: extract tabId, selector? (selector 可选)
             const sep = args.indexOf(",");
             if (sep > 0) {
               const tid = args.slice(0, sep).trim();
@@ -235,7 +332,6 @@ Respond in Chinese.`;
             break;
           }
           case "scroll": {
-            // 格式: scroll tabId, x, y
             const parts = args.split(",").map((s) => s.trim());
             if (parts.length >= 3) {
               const tid = parts[0];
@@ -246,18 +342,12 @@ Respond in Chinese.`;
             break;
           }
           case "schedule": {
-            // 格式: schedule 名称, 间隔毫秒, 要执行的提示
-            // 或: schedule 名称, cron, cron表达式, 要执行的提示
-            // 或: schedule 名称, once, 要执行的提示
             const parts = args.split(",").map((s) => s.trim());
             const taskName = parts[0];
             if (!taskName) break;
-
             const typeOrInterval = parts[1];
             if (!typeOrInterval) break;
-
             if (typeOrInterval === "cron") {
-              // schedule name, cron, expression, prompt
               const cronExpr = parts[2];
               const prompt = parts.slice(3).join(", ").trim();
               if (!cronExpr || !prompt) break;
@@ -274,7 +364,6 @@ Respond in Chinese.`;
                 });
               });
             } else if (typeOrInterval === "once") {
-              // schedule name, once, prompt
               const prompt = parts.slice(2).join(", ").trim();
               if (!prompt) break;
               window.tabby.tab.getAllInfo().then((tabs) => {
@@ -289,7 +378,6 @@ Respond in Chinese.`;
                 });
               });
             } else {
-              // schedule name, intervalMs, prompt
               const intervalMs = parseInt(typeOrInterval, 10);
               const prompt = parts.slice(2).join(", ").trim();
               if (isNaN(intervalMs) || !prompt) break;
@@ -309,7 +397,6 @@ Respond in Chinese.`;
             break;
           }
           case "create-page": {
-            // create-page, HTML content
             const htmlContent = args.trim();
             if (htmlContent) {
               window.tabby.tab.createPage(htmlContent).then(res => {
@@ -327,13 +414,11 @@ Respond in Chinese.`;
     }
   }, [messages, loading]);
 
-
-
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Execute prompt template from PromptsPanel (send directly to AI, no web search)
+  // Execute prompt template from PromptsPanel
   useEffect(() => {
     if (executePrompt?.text && !pendingPromptRef.current && !loading && !searching) {
       pendingPromptRef.current = true;
@@ -350,9 +435,21 @@ Respond in Chinese.`;
     }
   }, [initialQuery, loading, searching]);
 
+  const handleNewConversation = async (): Promise<string | null> => {
+    try {
+      const conv = await window.tabby.conversations.create();
+      setCurrentConversationId(conv.id);
+      setConversationTitle(conv.title);
+      clear();
+      lastSavedCountRef.current = 0;
+      return conv.id;
+    } catch (err) {
+      console.error("Failed to create conversation:", err);
+      return null;
+    }
+  };
+
   const handleAiSearch = async (query: string) => {
-    // 所有消息直接发给 AI，由 AI 自行判断是否需要联网搜索
-    // AI 如果需要在回复中包含 [search: 查询内容] 来触发联网检索
     send(query, includeContext);
   };
 
@@ -369,11 +466,20 @@ Respond in Chinese.`;
     }
   };
 
+  const handleClearAndNew = () => {
+    handleNewConversation();
+  };
+
   return (
     <div className="flex flex-col h-full" style={{ background: "var(--pivot-ui-sidebar-bg)" }}>
+      {/* Header with history button */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200 dark:border-zinc-700">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">AI 助手</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 truncate" title={conversationTitle}>
+            {conversationTitle}
+          </h2>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           <label className="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
             <input
               type="checkbox"
@@ -383,8 +489,23 @@ Respond in Chinese.`;
             />
             上下文
           </label>
+          <button
+            onClick={() => setShowHistory(true)}
+            className="px-2 py-1 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+            title="对话历史"
+          >
+            历史
+          </button>
           {messages.length > 0 && (
-            <button onClick={clear} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" title="清除对话">清除</button>
+            <>
+              <button
+                onClick={handleClearAndNew}
+                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                title="新建对话"
+              >
+                新建
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -463,6 +584,15 @@ Respond in Chinese.`;
           )}
         </div>
       </div>
+
+      {/* Conversation History Panel */}
+      {showHistory && (
+        <ConversationPanel
+          onClose={() => setShowHistory(false)}
+          onLoadConversation={loadConversationById}
+          onNewConversation={handleNewConversation}
+        />
+      )}
     </div>
   );
 }

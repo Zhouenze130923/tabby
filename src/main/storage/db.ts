@@ -4,6 +4,28 @@ import path from "path";
 import { SCHEMA } from "./schema";
 import { runMigrations } from "./migration";
 
+// ── Conversation History Types ──
+
+export interface Conversation {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+}
+
+export interface Message {
+  id: string;
+  conversationId: string;
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
+function generateId(): string {
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const dbPath = path.join(app.getPath("userData"), "pivot.db");
 const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
@@ -269,6 +291,160 @@ export const tasks = {
     const stmt = db.prepare("DELETE FROM scheduled_tasks WHERE id = ?");
     const info = stmt.run(id);
     return info.changes > 0;
+  },
+};
+
+// ── Conversation History ──
+
+export const conversations = {
+  all(): Conversation[] {
+    const stmt = db.prepare(
+      "SELECT id, title, created_at, updated_at, message_count FROM conversations ORDER BY updated_at DESC"
+    );
+    const rows = stmt.all() as Array<{
+      id: string;
+      title: string;
+      created_at: string;
+      updated_at: string;
+      message_count: number;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      messageCount: r.message_count,
+    }));
+  },
+
+  create(title?: string): Conversation {
+    const id = generateId();
+    const t = title || "新对话";
+    const now = new Date().toISOString();
+    const stmt = db.prepare(
+      "INSERT INTO conversations (id, title, created_at, updated_at, message_count) VALUES (?, ?, ?, ?, 0)"
+    );
+    stmt.run(id, t, now, now);
+    return this.all().find((c) => c.id === id) as Conversation;
+  },
+
+  get(id: string): Conversation | undefined {
+    const stmt = db.prepare(
+      "SELECT id, title, created_at, updated_at, message_count FROM conversations WHERE id = ?"
+    );
+    const r = stmt.get(id) as
+      | {
+          id: string;
+          title: string;
+          created_at: string;
+          updated_at: string;
+          message_count: number;
+        }
+      | undefined;
+    if (!r) return undefined;
+    return {
+      id: r.id,
+      title: r.title,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      messageCount: r.message_count,
+    };
+  },
+
+  update(id: string, updates: Partial<Pick<Conversation, "title">>): boolean {
+    const existing = this.get(id);
+    if (!existing) return false;
+    const fields: string[] = [];
+    const values: any[] = [];
+    if (updates.title !== undefined) {
+      fields.push("title = ?");
+      values.push(updates.title);
+    }
+    fields.push("updated_at = ?");
+    values.push(new Date().toISOString());
+    if (fields.length === 0) return true;
+    values.push(id);
+    const stmt = db.prepare(`UPDATE conversations SET ${fields.join(", ")} WHERE id = ?`);
+    const info = stmt.run(...values);
+    return info.changes > 0;
+  },
+
+  remove(id: string): boolean {
+    // Delete all messages in the conversation first (CASCADE may not be enforced by all SQLite builds)
+    const delMessages = db.prepare("DELETE FROM messages WHERE conversation_id = ?");
+    delMessages.run(id);
+    const stmt = db.prepare("DELETE FROM conversations WHERE id = ?");
+    const info = stmt.run(id);
+    return info.changes > 0;
+  },
+
+  incrementMessageCount(id: string): void {
+    const stmt = db.prepare(
+      "UPDATE conversations SET message_count = message_count + 1, updated_at = ? WHERE id = ?"
+    );
+    stmt.run(new Date().toISOString(), id);
+  },
+};
+
+export const chatMessages = {
+  all(conversationId: string): Message[] {
+    const stmt = db.prepare(
+      "SELECT id, conversation_id, role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC"
+    );
+    const rows = stmt.all(conversationId) as Array<{
+      id: string;
+      conversation_id: string;
+      role: string;
+      content: string;
+      created_at: string;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      conversationId: r.conversation_id,
+      role: r.role,
+      content: r.content,
+      createdAt: r.created_at,
+    }));
+  },
+
+  add(
+    conversationId: string,
+    role: string,
+    content: string
+  ): Message {
+    const id = generateId();
+    const now = new Date().toISOString();
+    const stmt = db.prepare(
+      "INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)"
+    );
+    stmt.run(id, conversationId, role, content, now);
+    // Update message count on the conversation
+    conversations.incrementMessageCount(conversationId);
+
+    return {
+      id,
+      conversationId,
+      role,
+      content,
+      createdAt: now,
+    };
+  },
+
+  remove(id: string): boolean {
+    const stmt = db.prepare("DELETE FROM messages WHERE id = ?");
+    const info = stmt.run(id);
+    return info.changes > 0;
+  },
+
+  clear(conversationId: string): boolean {
+    const stmt = db.prepare("DELETE FROM messages WHERE conversation_id = ?");
+    stmt.run(conversationId);
+    // Reset message count
+    const updateStmt = db.prepare(
+      "UPDATE conversations SET message_count = 0, updated_at = ? WHERE id = ?"
+    );
+    updateStmt.run(new Date().toISOString(), conversationId);
+    return true;
   },
 };
 

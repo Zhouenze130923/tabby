@@ -7,6 +7,8 @@ import {
   history,
   settings as dbSettings,
   prompts,
+  conversations,
+  chatMessages,
   close as closeDb,
 } from "../storage/db";
 import { loadSkills, getSkill, executeSkill } from "../skills/loader";
@@ -22,6 +24,43 @@ let currentAbortController: AbortController | null = null;
 
 // Map tabId → webContentsId for page content extraction
 const tabWebContents = new Map<string, number>();
+
+// Float window state
+let floatWindow: BrowserWindow | null = null;
+
+function createFloatWindow(mainWindow: BrowserWindow) {
+  floatWindow = new BrowserWindow({
+    width: 380,
+    height: 520,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: true,
+    frame: true,
+    title: "Pivot — 浮窗",
+    webPreferences: {
+      preload: path.join(__dirname, "../preload/bridge.js"),
+      webviewTag: true,
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  if (process.env.NODE_ENV === "development") {
+    floatWindow.loadURL("http://localhost:5173/?float=1");
+  } else {
+    floatWindow.loadFile(path.join(__dirname, "../renderer/index.html"), { query: { float: "1" } });
+  }
+
+  floatWindow.on("closed", () => {
+    floatWindow = null;
+    // Restore main window when float is closed externally
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
 
 function getProvider(providerName?: string): any {
   // Read provider config from SQLite settings
@@ -62,6 +101,9 @@ export function registerHandlers(mainWindow: BrowserWindow) {
     if (!mainWindow.isDestroyed()) {
       mainWindow.webContents.send("tab:updated", tabs, tabManager.getActiveId());
     }
+    if (floatWindow && !floatWindow.isDestroyed()) {
+      floatWindow.webContents.send("tab:updated", tabs, tabManager.getActiveId());
+    }
   });
 
   // —— 窗口控制 ——
@@ -72,6 +114,33 @@ export function registerHandlers(mainWindow: BrowserWindow) {
   });
   ipcMain.handle("window:close", () => mainWindow.close());
   ipcMain.handle("window:isMaximized", () => mainWindow.isMaximized());
+
+  // —— 浮窗控制 ——
+  ipcMain.handle("window:enterFloat", () => {
+    if (floatWindow && !floatWindow.isDestroyed()) {
+      floatWindow.focus();
+      return true;
+    }
+    createFloatWindow(mainWindow);
+    mainWindow.minimize();
+    return true;
+  });
+
+  ipcMain.handle("window:exitFloat", () => {
+    if (floatWindow && !floatWindow.isDestroyed()) {
+      floatWindow.close();
+      floatWindow = null;
+    }
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    return true;
+  });
+
+  ipcMain.handle("window:isFloating", () => {
+    return floatWindow !== null && !floatWindow.isDestroyed();
+  });
 
   // —— 设置 ——
   // Build full settings object from SQLite key-value pairs
@@ -494,6 +563,29 @@ export function registerHandlers(mainWindow: BrowserWindow) {
   ipcMain.handle("tasks:toggle", (_e, id: string, active: boolean) => {
     return dbTasks.update(id, { active });
   });
+
+  // —— Conversation History ——
+  ipcMain.handle("conversations:list", () => conversations.all());
+
+  ipcMain.handle("conversations:create", (_e, title?: string) => conversations.create(title));
+
+  ipcMain.handle("conversations:remove", (_e, id: string) => conversations.remove(id));
+
+  ipcMain.handle("conversations:rename", (_e, id: string, title: string) =>
+    conversations.update(id, { title })
+  );
+
+  ipcMain.handle("messages:list", (_e, conversationId: string) =>
+    chatMessages.all(conversationId)
+  );
+
+  ipcMain.handle("messages:add", (_e, conversationId: string, role: string, content: string) =>
+    chatMessages.add(conversationId, role, content)
+  );
+
+  ipcMain.handle("messages:clear", (_e, conversationId: string) =>
+    chatMessages.clear(conversationId)
+  );
 
   // —— Cleanup on window close ——
   mainWindow.on("closed", () => {

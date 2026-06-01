@@ -22,6 +22,8 @@ export interface UseChatOptions {
   systemPrompt?: string;
   onAccentColor?: (color: string) => void;
   onTabAction?: (action: TabAction) => void;
+  /** Fires after each complete user→assistant response round with the pair of messages */
+  onAfterResponse?: (userMsg: ChatMessage, assistantMsg: ChatMessage) => void;
 }
 
 export interface UseChatReturn {
@@ -31,6 +33,8 @@ export interface UseChatReturn {
   send: (content: string, includeContext?: boolean) => Promise<void>;
   clear: () => void;
   abort: () => void;
+  /** Replace current messages with loaded ones (e.g., from conversation history) */
+  loadMessages: (msgs: ChatMessage[]) => void;
 }
 
 /**
@@ -53,7 +57,18 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
   const abortRef = useRef<AbortController | null>(null);
   const onAccentColor = options?.onAccentColor;
   const onTabAction = options?.onTabAction;
+  const onAfterResponse = options?.onAfterResponse;
   const searchingRef = useRef(false);
+  /** Track whether the current stream's assistant message has been saved */
+  const savedRef = useRef(false);
+
+  // Store callbacks in refs so they don't change the send dependency
+  const onAccentColorRef = useRef(onAccentColor);
+  onAccentColorRef.current = onAccentColor;
+  const onTabActionRef = useRef(onTabAction);
+  onTabActionRef.current = onTabAction;
+  const onAfterResponseRef = useRef(onAfterResponse);
+  onAfterResponseRef.current = onAfterResponse;
 
   // Cleanup on unmount
   useEffect(() => {
@@ -74,7 +89,11 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
 
       const userMsg: ChatMessage = { role: "user", content: content.trim() };
       const previousMessages = messages;
+      const currentSystemPrompt = systemPrompt;
       setMessages((prev) => [...prev, userMsg]);
+
+      // Reset save flag for this round
+      savedRef.current = false;
 
       try {
         // Optionally include current page context
@@ -91,7 +110,7 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
         }
 
         // Build the messages array
-        const fullSystemPrompt = systemPrompt + (contextInfo ? contextInfo : "");
+        const fullSystemPrompt = currentSystemPrompt + (contextInfo ? contextInfo : "");
         const msgs: ChatMessage[] = [
           { role: "system", content: fullSystemPrompt },
           ...previousMessages,
@@ -126,11 +145,23 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
           } else if (chunk.type === "done") {
             setLoading(false);
             cleanup();
+
+            // Fire onAfterResponse with the completed pair
+            if (!savedRef.current && onAfterResponseRef.current && fullContent) {
+              savedRef.current = true;
+              const assistantMsg: ChatMessage = { role: "assistant", content: fullContent };
+              try {
+                onAfterResponseRef.current(userMsg, assistantMsg);
+              } catch (e) {
+                console.error("[useChat] onAfterResponse error:", e);
+              }
+            }
+
             // Check for accent color command in complete response
-            if (onAccentColor && fullContent) {
+            if (onAccentColorRef.current && fullContent) {
               const match = fullContent.match(/\[set-accent:\s*(#[0-9a-fA-F]{3,8})\]/);
               if (match) {
-                onAccentColor(match[1]);
+                onAccentColorRef.current(match[1]);
               }
             }
             // Check for browser-style commands and execute IMMEDIATELY
@@ -191,7 +222,7 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
               }).catch(() => { searchingRef.current = false; });
             }
             // Check for tab action commands
-            if (onTabAction && fullContent) {
+            if (onTabActionRef.current && fullContent) {
               const tabRegex = /\[tab-action:\s*(\w+)\s*,?\s*([^\]]*)\]/g;
               let tabMatch;
               while ((tabMatch = tabRegex.exec(fullContent)) !== null) {
@@ -199,20 +230,20 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
                 const args = tabMatch[2].trim();
                 switch (actionType) {
                   case "switch":
-                    onTabAction({ type: "switch", tabId: args });
+                    onTabActionRef.current({ type: "switch", tabId: args });
                     break;
                   case "open":
-                    onTabAction({ type: "open", url: args });
+                    onTabActionRef.current({ type: "open", url: args });
                     break;
                   case "close":
-                    onTabAction({ type: "close", tabId: args });
+                    onTabActionRef.current({ type: "close", tabId: args });
                     break;
                   case "navigate":
                     const [tabId, ...urlParts] = args.split(",");
-                    onTabAction({ type: "navigate", tabId: tabId.trim(), url: urlParts.join(",").trim() });
+                    onTabActionRef.current({ type: "navigate", tabId: tabId.trim(), url: urlParts.join(",").trim() });
                     break;
                   case "content":
-                    onTabAction({ type: "content", tabId: args });
+                    onTabActionRef.current({ type: "content", tabId: args });
                     break;
                 }
               }
@@ -237,6 +268,8 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
     setMessages([]);
     setError(null);
     setLoading(false);
+    searchingRef.current = false;
+    savedRef.current = false;
   }, []);
 
   const abort = useCallback(() => {
@@ -244,5 +277,14 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
     setLoading(false);
   }, []);
 
-  return { messages, loading, error, send, clear, abort };
+  const loadMessages = useCallback((msgs: ChatMessage[]) => {
+    abortRef.current?.abort();
+    setMessages(msgs);
+    setError(null);
+    setLoading(false);
+    searchingRef.current = false;
+    savedRef.current = false;
+  }, []);
+
+  return { messages, loading, error, send, clear, abort, loadMessages };
 }

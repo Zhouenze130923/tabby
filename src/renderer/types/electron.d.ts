@@ -168,6 +168,17 @@ interface Window {
       getConfig: () => Promise<SearchConfig>;
       saveConfig: (config: SearchConfig) => Promise<{success: boolean}>;
     };
+    conversations: {
+      list: () => Promise<Conversation[]>;
+      create: (title?: string) => Promise<Conversation>;
+      remove: (id: string) => Promise<boolean>;
+      rename: (id: string, title: string) => Promise<boolean>;
+    };
+    messages: {
+      list: (conversationId: string) => Promise<Message[]>;
+      add: (conversationId: string, role: string, content: string) => Promise<Message>;
+      clear: (conversationId: string) => Promise<boolean>;
+    };
     tasks: {
       list: () => Promise<ScheduledTask[]>;
       create: (task: Omit<ScheduledTask, "created_at">) => Promise<ScheduledTask>;
@@ -182,6 +193,9 @@ interface Window {
       close: () => Promise<void>;
       isMaximized: () => Promise<boolean>;
       onMaximizedChange: (cb: (maximized: boolean) => void) => void;
+      enterFloat: () => Promise<boolean>;
+      exitFloat: () => Promise<boolean>;
+      isFloating: () => Promise<boolean>;
     };
   };
 }
@@ -211,6 +225,22 @@ interface ScheduledTask {
   active: boolean;
   last_run?: string;
   created_at: string;
+}
+
+interface Conversation {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+}
+
+interface Message {
+  id: string;
+  conversationId: string;
+  role: string;
+  content: string;
+  createdAt: string;
 }
 
 interface SearchConfig {
