@@ -151,12 +151,15 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
                       break;
                     case "bg":
                       document.body.style.background = val;
-                      const root = document.getElementById("root");
-                      if (root) root.style.background = val;
+                      document.documentElement.style.setProperty("--pivot-ui-bg", val);
+                      const rootEl = document.getElementById("root");
+                      if (rootEl) rootEl.style.background = val;
                       localStorage.setItem("pivot-ui-bg", val);
                       break;
                     case "sidebar-bg":
                       document.documentElement.style.setProperty("--pivot-ui-sidebar-bg", val);
+                      const sb = document.querySelector("[class*='sidebar']") as HTMLElement | null;
+                      if (sb) sb.style.background = val;
                       localStorage.setItem("pivot-ui-sidebar-bg", val);
                       break;
                     case "font-size":
