@@ -27,7 +27,6 @@ export default function TitleBar({ setShowSidePanel, showSidePanel, onOpenSettin
         <Lightbulb size={15} />
       </button>
       <button
-        onClick={() => window.tabby.window.enterFloat()}
         className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-500 dark:text-gray-400 mr-1"
         title="浮窗模式 — 弹出小窗口"
       >

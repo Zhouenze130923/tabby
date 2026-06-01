@@ -152,9 +152,6 @@ const api = {
     onMaximizedChange: (cb: (maximized: boolean) => void) => {
       ipcRenderer.on("window:maximizedChanged", (_event, maximized) => cb(maximized));
     },
-    enterFloat: () => ipcRenderer.invoke("window:enterFloat"),
-    exitFloat: () => ipcRenderer.invoke("window:exitFloat"),
-    isFloating: () => ipcRenderer.invoke("window:isFloating"),
   },
 };
 

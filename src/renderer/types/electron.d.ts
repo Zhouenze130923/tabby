@@ -193,9 +193,6 @@ interface Window {
       close: () => Promise<void>;
       isMaximized: () => Promise<boolean>;
       onMaximizedChange: (cb: (maximized: boolean) => void) => void;
-      enterFloat: () => Promise<boolean>;
-      exitFloat: () => Promise<boolean>;
-      isFloating: () => Promise<boolean>;
     };
   };
 }
