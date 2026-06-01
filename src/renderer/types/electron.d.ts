@@ -118,7 +118,6 @@ interface Window {
       registerWebview: (tabId: string, webContentsId: number) => Promise<any>;
       getAllInfo: () => Promise<Array<{id: string; url: string; title: string; favicon: string; isLoading: boolean; isActive: boolean}>>;
       switch: (id: string) => Promise<boolean>;
-      injectStyle: (tabId: string, css: string) => Promise<{success: boolean; error?: string}>;
       executeJS: (tabId: string, code: string) => Promise<{success: boolean; result?: any; error?: string}>;
       clickElement: (tabId: string, selector: string) => Promise<{success: boolean; error?: string}>;
       fillInput: (tabId: string, selector: string, value: string) => Promise<{success: boolean; error?: string}>;

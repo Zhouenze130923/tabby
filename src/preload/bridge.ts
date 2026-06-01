@@ -28,9 +28,6 @@ const api = {
     getAllInfo: () => ipcRenderer.invoke("tab:getAllInfo"),
     /** 切换到指定标签页 */
     switch: (id: string) => ipcRenderer.invoke("tab:switch", id),
-    /** 向标签页注入 CSS 样式 */
-    injectStyle: (tabId: string, css: string) =>
-      ipcRenderer.invoke("tab:injectStyle", tabId, css),
     /** Execute JavaScript in the tab page */
     executeJS: (tabId: string, code: string) =>
       ipcRenderer.invoke("tab:executeJS", tabId, code),

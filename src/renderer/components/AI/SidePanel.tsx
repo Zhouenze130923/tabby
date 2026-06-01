@@ -27,37 +27,44 @@ export default function SidePanel({ tabId, initialQuery, onQueryConsumed, execut
 
   // 构建包含标签页信息的系统提示
   const buildSystemPrompt = (tabsInfo: string, groupsText: string) =>
-    `You are an AI assistant INSIDE a browser. You control the browser by including command tags in your response. You MUST ALWAYS execute the actual command — never just describe what you would do.
+  `You are an AI assistant inside the Pivot browser. Control the browser by including command tags in your response. You MUST execute commands — don't just describe what you would do.
 
 Open tabs:
-${tabsInfo || "(no tabs yet)"}
+${tabsInfo || "(none)"}
 
-AVAILABLE COMMANDS (include one or more in your response to execute):
+COMMANDS:
+- [tab-action: open URL] — open URL in new tab
+- [tab-action: switch tabId] — switch to tab
+- [tab-action: close tabId] — close tab
+- [tab-action: navigate tabId, URL] — navigate tab
+- [tab-action: click tabId, .selector] — click element
+- [tab-action: type tabId, #input, text] — fill input
+- [tab-action: extract tabId] — extract text
+- [tab-action: classify] — group tabs
+- [tab-action: schedule name, ms, prompt] — create task
+- [set-accent: #HEX] — change browser accent color
 
-Tabs: [tab-action: open URL]  [tab-action: switch tabId]  [tab-action: close tabId]  [tab-action: navigate tabId, URL]
+BROWSER STYLE — change how the browser itself looks:
+- [browser-style: dark] — dark mode
+- [browser-style: light] — light mode
+- [browser-style: bg, #color] — set background
+- [browser-style: sidebar-bg, #color] — set sidebar bg
+- [browser-style: radius, 12px] — set border radius
+- [browser-style: font-size, 16px] — set UI font size
 
-Styling: [tab-action: style tabId, CSS]  — inject CSS into a page. Example: [tab-action: style _active_, body { background: #1a1a2e !important; color: #eee !important; }]
-Use _active_ for the current tab.
+Use _active_ as tabId for the current tab.
 
-Clicking: [tab-action: click tabId, .selector]  Typing: [tab-action: type tabId, #input, text]
-Extracting: [tab-action: extract tabId]  Scrolling: [tab-action: scroll tabId, x, y]
-Reading content: [tab-action: content tabId]
+Examples:
+User: 改为深色模式 → [browser-style: dark] 已切换
+User: 界面太挤了 → [browser-style: radius, 8px] [browser-style: font-size, 13px] 好了
+User: 帮我把背景改成深蓝 → [set-accent: #1e3a5f] [browser-style: bg, #0a1628] 已设置
+User: 打开百度 → [tab-action: open https://baidu.com] 已打开
+User: 界面太亮了 → [browser-style: dark] 已切换
 
-Tab groups: [tab-action: classify]  [tab-action: group Name, tabId1, tabId2]
-
-Scheduling: [tab-action: schedule name, intervalMs, prompt]
-
-Theme: [set-accent: #HEX] — changes app accent color
-
-EXAMPLES:
-User: 改为深色模式 → Respond with: [tab-action: style _active_, body { background: #1a1a2e !important; color: #d0d0d0 !important; }] 已改为深色模式
-User: 打开百度 → Respond with: [tab-action: open https://baidu.com] 已打开
-User: 把字体放大 → Respond with: [tab-action: style _active_, * { font-size: 18px !important; }]
-
-IMPORTANT: You must include the command tag in your response. Just saying "好的我来帮你改" without [tab-action: ...] does nothing.
+IMPORTANT: You must include the command tag in your response.
 
 Current accent: ${accentColor}
-Tab Groups: ${groupsText || "(none yet)"}
+Tab Groups: ${groupsText || "(none)"}
 Respond in Chinese.`;
 
   // 加载标签页列表
@@ -264,20 +271,50 @@ Respond in Chinese.`;
             }
             break;
           }
-          case "style": {
-            // 格式: style tabId, CSS代码
-            const sep = args.indexOf(",");
-            if (sep > 0) {
-              const tid = args.slice(0, sep).trim();
-              const css = args.slice(sep + 1).trim();
-              window.tabby.tab.injectStyle(tid, css);
-            }
-            break;
-          }
         }
       } catch (e) {
         console.error("tab-action failed:", e);
       }
+    }
+  }, [messages]);
+
+  // 监听 AI 中的 [browser-style: ...] 标记，直接修改浏览器界面
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (!last?.content || last.role !== "assistant") return;
+    const styleRegex = /\[browser-style:\s*(\w+)\s*,?\s*([^\]]*)\]/g;
+    let m;
+    while ((m = styleRegex.exec(last.content)) !== null) {
+      const prop = m[1].trim().toLowerCase();
+      const val = m[2].trim();
+      const root = document.documentElement;
+      switch (prop) {
+        case "dark":
+          document.documentElement.classList.add("dark");
+          localStorage.setItem("pivot-theme", "dark");
+          break;
+        case "light":
+          document.documentElement.classList.remove("dark");
+          localStorage.setItem("pivot-theme", "light");
+          break;
+        case "bg":
+          root.style.setProperty("--pivot-ui-bg", val);
+          localStorage.setItem("pivot-ui-bg", val);
+          break;
+        case "sidebar-bg":
+          root.style.setProperty("--pivot-ui-sidebar-bg", val);
+          localStorage.setItem("pivot-ui-sidebar-bg", val);
+          break;
+        case "radius":
+          root.style.setProperty("--pivot-ui-radius", val);
+          localStorage.setItem("pivot-ui-radius", val);
+          break;
+        case "font-size":
+          root.style.setProperty("--pivot-ui-font-size", val);
+          localStorage.setItem("pivot-ui-font-size", val);
+          break;
+      }
+      console.log(`[Pivot] browser-style: ${prop} = ${val}`);
     }
   }, [messages]);
 

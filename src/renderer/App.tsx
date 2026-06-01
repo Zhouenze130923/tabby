@@ -28,6 +28,23 @@ export default function App() {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isResizing = useRef(false);
 
+  // 加载保存的 UI 样式（browser-style 持久化）
+  useEffect(() => {
+    const root = document.documentElement;
+    const load = (key: string, varName: string) => {
+      const v = localStorage.getItem(key);
+      if (v) root.style.setProperty(varName, v);
+    };
+    load("pivot-ui-bg", "--pivot-ui-bg");
+    load("pivot-ui-sidebar-bg", "--pivot-ui-sidebar-bg");
+    load("pivot-ui-radius", "--pivot-ui-radius");
+    load("pivot-ui-font-size", "--pivot-ui-font-size");
+    // 恢复主题
+    const theme = localStorage.getItem("pivot-theme");
+    if (theme === "dark") root.classList.add("dark");
+    if (theme === "light") root.classList.remove("dark");
+  }, []);
+
   // Sidebar resize handling
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -98,7 +115,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-    <div className="flex flex-col h-screen bg-white dark:bg-zinc-900">
+    <div className="flex flex-col h-screen" style={{ backgroundColor: "var(--pivot-ui-bg)" }}>
       <TitleBar
         setShowSidePanel={setShowSidePanel}
         showSidePanel={showSidePanel}

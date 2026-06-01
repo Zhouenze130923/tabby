@@ -201,19 +201,6 @@ export function registerHandlers(mainWindow: BrowserWindow) {
     return tab ? true : false;
   });
 
-  ipcMain.handle("tab:injectStyle", async (_e, tabId: string, css: string) => {
-    try {
-      const wcId = tabWebContents.get(tabId);
-      if (!wcId) return { success: false, error: "tab not found" };
-      const wc = webContents.fromId(wcId);
-      if (!wc || wc.isDestroyed()) return { success: false, error: "webview destroyed" };
-      wc.insertCSS(css);
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message };
-    }
-  });
-
   ipcMain.handle("tab:executeJS", async (_e, tabId: string, code: string) => {
     try {
       const wcId = tabWebContents.get(tabId);
