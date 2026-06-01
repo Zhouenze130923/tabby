@@ -12,7 +12,13 @@ import HistoryPanel from "./components/History/HistoryPanel";
 import PromptsPanel from "./components/Tips/TipsPanel";
 import TasksPanel from "./components/Tasks/TasksPanel";
 
+function useFloatMode() {
+  const [isFloat] = useState(() => new URLSearchParams(window.location.search).get("float") === "1");
+  return isFloat;
+}
+
 export default function App() {
+  const isFloat = useFloatMode();
   const activeTabId = useTabStore((s) => s.activeTabId);
   const accentColor = useThemeStore((s) => s.accentColor);
   const [showSidePanel, setShowSidePanel] = useState(true);
@@ -116,6 +122,28 @@ export default function App() {
       unsubTasks();
     };
   }, []);
+
+  // 浮窗模式 — 只显示 AI 对话界面
+  if (isFloat) {
+    return (
+      <ErrorBoundary>
+      <div className="flex flex-col h-screen" style={{ background: "var(--pivot-ui-bg)" }}>
+        <div className="flex items-center h-8 px-3 border-b border-gray-200 dark:border-zinc-700 shrink-0 draggable-area">
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">💬 Pivot 浮窗</span>
+          <div className="flex-1" />
+          <button
+            onClick={() => window.tabby.window.exitFloat()}
+            className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-400"
+            title="关闭浮窗"
+          >✕</button>
+        </div>
+        <div className="flex-1 flex flex-col min-h-0">
+          <SidePanel tabId={activeTabId} />
+        </div>
+      </div>
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <ErrorBoundary>
