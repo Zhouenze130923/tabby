@@ -9,9 +9,6 @@ export default function WebView({ onAiSearch }: { onAiSearch?: (query: string) =
   const webviewRefs = useRef<Map<string, WebviewTag>>(new Map());
   // 记录上一次我们主动设置的 URL，用于：① 判断导航来源 ② 避免重复赋值
   const lastSetUrl = useRef<Map<string, string>>(new Map());
-  // 记录 webview 是否已触发 dom-ready（loadURL 必须在 dom-ready 后调用）
-  const domReady = useRef<Set<string>>(new Set());
-
   /** 为 webview 绑定事件监听 */
   const setupWebview = useCallback(
     (tabId: string, wv: WebviewTag) => {
@@ -52,21 +49,10 @@ export default function WebView({ onAiSearch }: { onAiSearch?: (query: string) =
 
       wv.addEventListener("did-navigate", onNavigate);
       wv.addEventListener("did-navigate-in-page", onNavigate);
-      const onDomReady = () => {
-        domReady.current.add(tabId);
-        // 如果有 pending URL，在 dom-ready 后执行 loadURL
-        const pendingUrl = (wv as any).__tabby_pendingUrl;
-        if (pendingUrl) {
-          (wv as any).__tabby_pendingUrl = null;
-          wv.loadURL(pendingUrl);
-        }
-      };
-
       wv.addEventListener("did-start-loading", onStartLoading);
       wv.addEventListener("did-stop-loading", onStopLoading);
       wv.addEventListener("page-title-updated", onTitleUpdated);
       wv.addEventListener("page-favicon-updated", onFaviconUpdated);
-      wv.addEventListener("dom-ready", onDomReady);
 
       (wv as any).__tabby_cleanup = () => {
         wv.removeEventListener("did-navigate", onNavigate);
@@ -75,7 +61,6 @@ export default function WebView({ onAiSearch }: { onAiSearch?: (query: string) =
         wv.removeEventListener("did-stop-loading", onStopLoading);
         wv.removeEventListener("page-title-updated", onTitleUpdated);
         wv.removeEventListener("page-favicon-updated", onFaviconUpdated);
-        wv.removeEventListener("dom-ready", onDomReady);
       };
     },
     [updateTab]
@@ -116,13 +101,7 @@ export default function WebView({ onAiSearch }: { onAiSearch?: (query: string) =
       // about:blank 的初始加载由 JSX src 属性处理，这里不重复赋值
       if (tab.url && tab.url !== prevSet && tab.url !== "about:blank") {
         lastSetUrl.current.set(tab.id, tab.url);
-        if (domReady.current.has(tab.id)) {
-          // webview 已就绪，直接 loadURL
-          wv.loadURL(tab.url);
-        } else {
-          // webview 还未触发 dom-ready（刚创建），存为 pending
-          (wv as any).__tabby_pendingUrl = tab.url;
-        }
+        wv.src = tab.url;
       }
     });
   }, [tabs]);

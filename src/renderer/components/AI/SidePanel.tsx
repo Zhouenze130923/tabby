@@ -303,24 +303,17 @@ Respond in Chinese.`;
   }, [initialQuery, loading, searching]);
 
   const handleAiSearch = async (query: string) => {
-    // 判断意图：标签页操控 / 主题颜色 / 需要联网搜索 / 其他
-    const tabCommands = /打开|关闭|切换|跳转|导航|新建|标签/i.test(query);
-    const themeCommands = /主题|颜色|改成|改为|深色|浅色|变.*色|调.*色|换.*色|配色|模式/i.test(query);
-    const needsSearch = /搜索|查找|找一下|查一下|最新|今天|新闻|天气|价格|对比|是什么|怎么样|好不好/i.test(query);
+    // 默认直接对话，只有明确要求搜索才联网
+    const wantsSearch = /搜索|查找|找一下|查一下|查点|查个|搜一下/i.test(query) &&
+                        !/不搜索|别搜索|不要搜|不用搜|不查/i.test(query);
 
-    if (tabCommands) {
-      // 标签页操控：直接发给 AI
+    if (!wantsSearch) {
+      // 默认：直接发给 AI
       send(query, includeContext);
       return;
     }
 
-    if (themeCommands) {
-      // 主题颜色命令：直接发给 AI，不需要联网搜索
-      send(query, includeContext);
-      return;
-    }
-
-    // 否则：联网搜索 + AI 综合回答
+    // 明确要求搜索时才联网
     setSearching(true);
     try {
       const searchRes = await window.tabby.search.query(query);
