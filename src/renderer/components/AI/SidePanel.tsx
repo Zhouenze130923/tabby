@@ -47,10 +47,12 @@ COMMANDS:
 BROWSER STYLE — change how the browser itself looks:
 - [browser-style: dark] — dark mode
 - [browser-style: light] — light mode
-- [browser-style: bg, #color] — set background
+- [browser-style: bg, #color] — set background (supports gradients!)
 - [browser-style: sidebar-bg, #color] — set sidebar bg
 - [browser-style: radius, 12px] — set border radius
 - [browser-style: font-size, 16px] — set UI font size
+
+Gradient examples: [browser-style: bg, linear-gradient(135deg, #667eea 0%, #764ba2 100%)]
 
 Use _active_ as tabId for the current tab.
 
@@ -394,7 +396,7 @@ Respond in Chinese.`;
   };
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-zinc-900">
+    <div className="flex flex-col h-full" style={{ background: "var(--pivot-ui-sidebar-bg)" }}>
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200 dark:border-zinc-700">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">AI 助手</h2>
         <div className="flex items-center gap-2">

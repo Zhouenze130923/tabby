@@ -82,7 +82,7 @@ export default function AddressBar({ onAiSearch }: { onAiSearch?: (query: string
   };
 
   return (
-    <div className="flex items-center h-10 px-3 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-700 shrink-0 gap-2">
+    <div className="flex items-center h-10 px-3 border-b border-gray-200 dark:border-zinc-700 shrink-0 gap-2" style={{ background: "var(--pivot-ui-bg)" }}>
       <NavControls tabId={activeTabId} />
       <div
         className={`

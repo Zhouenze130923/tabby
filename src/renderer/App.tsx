@@ -115,7 +115,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-    <div className="flex flex-col h-screen" style={{ backgroundColor: "var(--pivot-ui-bg)" }}>
+    <div className="flex flex-col h-screen" style={{ background: "var(--pivot-ui-bg)" }}>
       <TitleBar
         setShowSidePanel={setShowSidePanel}
         showSidePanel={showSidePanel}

@@ -126,7 +126,7 @@ export default function WebView({ onAiSearch }: { onAiSearch?: (query: string) =
   const showNewTab = activeTab && (activeTab.url === "about:blank" || activeTab.url === "");
 
   return (
-    <div className="flex-1 relative bg-white dark:bg-zinc-950">
+    <div className="flex-1 relative">
       {showNewTab && (
         <div className="absolute inset-0 z-10 flex" style={{ pointerEvents: "auto" }}>
           <NewTabPage onAiSearch={onAiSearch} />
