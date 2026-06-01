@@ -2,6 +2,7 @@
   "name": "tabby",
   "version": "0.1.0",
   "description": "AI 原生浏览器 — 自备 API Key，比 Tabbit 更强大",
+  "author": "周恩泽 <zhouenze130923@outlook.com>",
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "npm run build:main && concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
