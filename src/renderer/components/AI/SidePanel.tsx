@@ -115,12 +115,41 @@ Respond in Chinese.`;
     setSystemPrompt(buildSystemPrompt(tabList, groupInfo));
   }, [tabList, accentColor, groupInfo]);
 
+  // 在 hooks 的 done 回调中直接执行 tab-action，比 useEffect 更可靠
+  // 在 hooks 的 done 回调中直接执行 tab-action
+  const onTabActionRef = useRef(async (action: any) => {
+    try {
+      switch (action.type) {
+        case "open": await window.tabby.tab.create(action.url); break;
+        case "switch": await window.tabby.tab.switch(action.tabId); break;
+        case "close": await window.tabby.tab.close(action.tabId); break;
+        case "navigate": await window.tabby.tab.navigate(action.tabId, action.url); break;
+        case "classify": {
+          const tabs = await window.tabby.tab.getAllInfo();
+          useTabGroupStore.getState().autoClassify(tabs);
+          break;
+        }
+        case "create-page": {
+          const res = await window.tabby.tab.createPage(action.html);
+          if (res.success && res.url) await window.tabby.tab.create(res.url);
+          break;
+        }
+        case "schedule": {
+          // schedule: {name, intervalMs, prompt, tabUrl}
+          await window.tabby.tasks.create(action.task);
+          break;
+        }
+      }
+    } catch (e) { console.error("onTabAction error:", e); }
+  });
+
   const { messages, loading, error, send, clear, abort } = useChat({
     onAccentColor: setAccentColor,
+    onTabAction: (action) => { onTabActionRef.current(action); },
     systemPrompt,
   });
 
-  // 监听 AI 输出中的 tab-action 标记（流完成后才处理）
+  // 流完成后再检查一次 tab-action 标记（作为补充）
   const processedMsgCount = useRef(0);
   useEffect(() => {
     if (loading) return;
