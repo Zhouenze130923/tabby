@@ -40,7 +40,7 @@ export default function TabBar() {
 
   if (tabs.length === 0) {
     return (
-      <div className="flex items-center h-9 bg-gray-50 dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-700 shrink-0 px-2">
+      <div className="flex items-center h-9 border-b border-gray-200 dark:border-zinc-700 shrink-0 px-2" style={{ background: "var(--pivot-ui-bg)" }}>
         <button
           onClick={handleCreate}
           className="flex items-center gap-1 px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-md transition-colors"
@@ -53,7 +53,7 @@ export default function TabBar() {
   }
 
   return (
-    <div className="flex items-center h-9 bg-gray-50 dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-700 shrink-0 overflow-x-auto">
+    <div className="flex items-center h-9 border-b border-gray-200 dark:border-zinc-700 shrink-0 overflow-x-auto" style={{ background: "var(--pivot-ui-bg)" }}>
       <div className="flex items-center flex-1 min-w-0 px-1 gap-0.5">
         {tabs.map((tab, idx) => {
           const isActive = tab.id === activeTabId;
