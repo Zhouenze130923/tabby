@@ -120,10 +120,10 @@ Respond in Chinese.`;
     systemPrompt,
   });
 
-  // 监听 AI 输出中的 tab-action 标记（仅在流完成后处理）
+  // 监听 AI 输出中的 tab-action 标记（流完成后才处理）
   const processedMsgCount = useRef(0);
   useEffect(() => {
-    if (loading) return; // 流式输出中，等完成后再处理
+    if (loading) return;
     if (messages.length <= processedMsgCount.current) return;
     const last = messages[messages.length - 1];
     if (!last || last.role !== "assistant") return;
@@ -294,7 +294,7 @@ Respond in Chinese.`;
         console.error("tab-action failed:", e);
       }
     }
-  }, [messages]);
+  }, [messages, loading]);
 
 
 
