@@ -313,7 +313,8 @@ Respond in Chinese.`;
           localStorage.setItem("pivot-theme", "light");
           break;
         case "bg":
-          root.style.setProperty("--pivot-ui-bg", val);
+          document.body.style.background = val;
+          document.getElementById("root")!.style.background = val;
           localStorage.setItem("pivot-ui-bg", val);
           break;
         case "sidebar-bg":
@@ -322,10 +323,11 @@ Respond in Chinese.`;
           break;
         case "radius":
           root.style.setProperty("--pivot-ui-radius", val);
+          [...document.querySelectorAll<HTMLElement>(".rounded-chrome")].forEach(el => el.style.borderRadius = val);
           localStorage.setItem("pivot-ui-radius", val);
           break;
         case "font-size":
-          root.style.setProperty("--pivot-ui-font-size", val);
+          document.body.style.fontSize = val;
           localStorage.setItem("pivot-ui-font-size", val);
           break;
       }

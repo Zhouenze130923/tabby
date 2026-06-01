@@ -35,10 +35,14 @@ export default function App() {
       const v = localStorage.getItem(key);
       if (v) root.style.setProperty(varName, v);
     };
-    load("pivot-ui-bg", "--pivot-ui-bg");
+    const uiBg = localStorage.getItem("pivot-ui-bg");
+    if (uiBg) {
+      document.body.style.background = uiBg;
+      document.getElementById("root")!.style.background = uiBg;
+    }
     load("pivot-ui-sidebar-bg", "--pivot-ui-sidebar-bg");
-    load("pivot-ui-radius", "--pivot-ui-radius");
-    load("pivot-ui-font-size", "--pivot-ui-font-size");
+    const uiFontSize = localStorage.getItem("pivot-ui-font-size");
+    if (uiFontSize) document.body.style.fontSize = uiFontSize;
     // 恢复主题
     const theme = localStorage.getItem("pivot-theme");
     if (theme === "dark") root.classList.add("dark");
@@ -115,7 +119,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-    <div className="flex flex-col h-screen" style={{ background: "var(--pivot-ui-bg)" }}>
+    <div className="flex flex-col h-screen">
       <TitleBar
         setShowSidePanel={setShowSidePanel}
         showSidePanel={showSidePanel}
