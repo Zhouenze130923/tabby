@@ -6,6 +6,7 @@ import { useThemeStore } from "../../stores/themeStore";
 import { useTabGroupStore } from "../../stores/tabGroupStore";
 import { userMemory } from "../../stores/userMemoryStore";
 import ConversationPanel from "../History/ConversationPanel";
+import KnowledgePanel from "../Knowledge/KnowledgePanel";
 
 interface SidePanelProps {
   tabId: string | null;
@@ -27,6 +28,10 @@ export default function SidePanel({ tabId, initialQuery, onQueryConsumed, execut
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [conversationTitle, setConversationTitle] = useState("新对话");
   const pendingPromptRef = useRef(false);
+  // Research Agent state
+  const [researchActive, setResearchActive] = useState(false);
+  const [researchLogs, setResearchLogs] = useState<string[]>([]);
+  const [researchReport, setResearchReport] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initialSent = useRef(false);
   // Track saved messages to avoid duplicate saves
@@ -88,6 +93,18 @@ COMMANDS:
 - [tab-action: schedule name, ms, prompt] — create task
 - [tab-action: create-page, full HTML content here] — create a webpage from HTML and open it
 - [set-accent: #HEX] — change browser accent color
+
+FILE COMMANDS:
+- [file-action: read /path/to/file] — read file content
+- [file-action: write /path/to/file, content to write] — write to file
+- [file-action: list /path/to/dir] — list directory
+- [file-action: select] — open file picker dialog
+- [file-action: screenshot tabId] — take screenshot of tab (_active_ for current)
+- [file-action: getPageInfo tabId] — get full page info (title, url, text, html)
+- [file-action: highlight tabId, .selector] — highlight element on page
+- [file-action: js tabId, code] — execute JS in tab
+- [file-action: delete /path/to/file] — permanently delete file
+- [file-action: trash /path/to/file] — move file to trash
 
 BROWSER STYLE:
 - [browser-style: dark/light] — switch theme
@@ -253,6 +270,11 @@ Respond in Chinese.${buildUserMemoryStr()}`;
     systemPrompt,
   });
 
+  // 过滤掉隐藏的工具消息（必须在 messages 初始化之后）
+  var visibleMessages = messages.filter(function(m: any) {
+    return !(m.role === "user" && m.content.startsWith("[文件内容:"));
+  });
+
   // 流完成后再检查一次 tab-action 标记（作为补充）
   const processedMsgCount = useRef(0);
   useEffect(() => {
@@ -412,7 +434,116 @@ Respond in Chinese.${buildUserMemoryStr()}`;
         console.error("tab-action failed:", e);
       }
     }
+
+    // 处理 [file-action:] 命令
+    const fileRegex = /\[file-action:\s*(\w+)\s*,?\s*([^\]]*)\]/g;
+    let fileMatch;
+    while ((fileMatch = fileRegex.exec(last.content)) !== null) {
+      const actionType = fileMatch[1].trim();
+      const args = fileMatch[2].trim();
+      try {
+        switch (actionType) {
+          case "read": {
+            // 静默读取文件，不显示结果
+            window.tabby.file.read(args).catch(function(){});
+            break;
+          }
+          case "write": {
+            var writeSep = args.indexOf(",");
+            if (writeSep > 0) {
+              window.tabby.file.write(args.slice(0, writeSep).trim(), args.slice(writeSep + 1).trim()).catch(function(){});
+            }
+            break;
+          }
+          case "list": {
+            window.tabby.file.list(args).catch(function(){});
+            break;
+          }
+          case "delete": {
+            window.tabby.file.delete(args).catch(function(){});
+            break;
+          }
+          case "trash": {
+            window.tabby.file.trash(args).catch(function(){});
+            break;
+          }
+          case "select": {
+            window.tabby.file.select().catch(function(){});
+            break;
+          }
+          case "screenshot": {
+            var sTargetId = !args || args === "_active_" ? tabId : args;
+            if (sTargetId) window.tabby.tab.screenshot(sTargetId).catch(function(){});
+            break;
+          }
+          case "getPageInfo": {
+            var gTargetId = !args || !isNaN(Number(args)) ? tabId : args;
+            if (gTargetId) window.tabby.tab.getPageInfo(gTargetId).catch(function(){});
+            break;
+          }
+          case "highlight": {
+            var hParts = args.split(",");
+            var hTid = hParts[0].trim();
+            var hSel = hParts.slice(1).join(",").trim();
+            var hTabId2 = (!hTid || hTid === "_active_" || !isNaN(Number(hTid))) ? tabId : hTid;
+            if (hTabId2 && hSel.length > 0) window.tabby.tab.highlight(hTabId2, hSel);
+            break;
+          }
+          case "js": {
+            var jParts = args.split(",");
+            var jTid = jParts[0].trim();
+            var jCode = jParts.slice(1).join(",").trim();
+            var jsTabId2 = (!jTid || jTid === "_active_" || !isNaN(Number(jTid))) ? tabId : jTid;
+            if (jsTabId2 && jCode) window.tabby.tab.executeJS(jsTabId2, jCode).catch(function(){});
+            break;
+          }
+        }
+      } catch (e) {
+        console.error("file-action failed:", e);
+      }
+    }
   }, [messages, loading]);
+
+  // Use refs to avoid stale closures with send
+  const sendRef = useRef(send);
+  sendRef.current = send;
+
+  // Research Agent — detect /research commands
+  useEffect(() => {
+    if (executePrompt?.text?.startsWith("/research")) {
+      startResearch(executePrompt.text.replace("/research", "").trim() || "帮我调研这个主题");
+      onPromptExecuted?.();
+    }
+  }, [executePrompt]);
+
+  // Listen for research:done events
+  useEffect(() => {
+    const unsub = window.tabby.research.onDone((data: any) => {
+      setResearchActive(false);
+      if (data.report) {
+        setResearchReport(data.report);
+        const sectionsText = (data.report.sections || []).map((s: any) => "### " + s.heading + "\n" + s.content).join("\n\n");
+        const reportText = "## 📊 调研报告: " + data.report.title + "\n\n" + data.report.summary + "\n\n" + sectionsText + "\n\n### 结论\n" + data.report.conclusion;
+        sendRef.current(reportText, false);
+      }
+      if (data.logs) {
+        setResearchLogs(data.logs);
+      }
+    });
+    return unsub;
+  }, []);
+
+  const startResearch = async (query: string) => {
+    try {
+      setResearchActive(true);
+      setResearchLogs([]);
+      setResearchReport(null);
+      await window.tabby.research.start(query);
+    } catch (err: any) {
+      setResearchActive(false);
+      sendRef.current("调研启动失败: " + err.message, false);
+    }
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -460,6 +591,8 @@ Respond in Chinese.${buildUserMemoryStr()}`;
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // 中文输入法：Enter 用于选词，不发送
+    if ((e as any).nativeEvent?.isComposing) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -496,7 +629,7 @@ Respond in Chinese.${buildUserMemoryStr()}`;
           >
             历史
           </button>
-          {messages.length > 0 && (
+          {visibleMessages.length > 0 && (
             <>
               <button
                 onClick={handleClearAndNew}
@@ -511,15 +644,15 @@ Respond in Chinese.${buildUserMemoryStr()}`;
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {messages.length === 0 ? (
+        {visibleMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-4">
             <div className="text-3xl mb-3">🤖</div>
             <p className="text-xs text-gray-400 dark:text-zinc-500 text-center leading-relaxed">AI 侧边栏<br />输入消息与 AI 对话</p>
           </div>
         ) : (
           <div className="p-3 space-y-3">
-            {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+            {visibleMessages.map(function(msg: any, i: number) {
+              return <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[88%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed ${msg.role === "user" ? "accent-bg text-white rounded-br-sm whitespace-pre-wrap" : "bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-200 rounded-bl-sm markdown-content"}`}>
                   {msg.role === "assistant" ? (
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
@@ -527,8 +660,8 @@ Respond in Chinese.${buildUserMemoryStr()}`;
                     msg.content
                   )}
                 </div>
-              </div>
-            ))}
+              </div>;
+            })}
             {searching && (
               <div className="flex justify-center">
                 <div className="accent-bg\/10 accent-border rounded-lg px-3 py-2 text-xs accent-text flex items-center gap-2">
@@ -584,6 +717,55 @@ Respond in Chinese.${buildUserMemoryStr()}`;
           )}
         </div>
       </div>
+
+      {/* Research Agent progress */}
+      {researchActive && (
+        <div className="px-3 py-2 border-t border-gray-200 dark:border-zinc-700 bg-blue-50/50 dark:bg-blue-900/10">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
+            <span className="text-xs font-medium text-blue-700 dark:text-blue-400">自主调研进行中...</span>
+          </div>
+          <div className="max-h-20 overflow-y-auto space-y-0.5">
+            {researchLogs.map((log, i) => (
+              <p key={i} className="text-[10px] text-blue-600/70 dark:text-blue-400/70 font-mono">{log}</p>
+            ))}
+          </div>
+        </div>
+      )}
+      {researchReport && (
+        <div className="px-3 py-2 border-t border-gray-200 dark:border-zinc-700">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">📊 调研报告</span>
+            <button
+              onClick={() => setResearchReport(null)}
+              className="text-[10px] text-gray-400 hover:text-gray-600"
+            >
+              关闭
+            </button>
+          </div>
+          <div className="text-xs text-gray-600 dark:text-gray-400 max-h-40 overflow-y-auto leading-relaxed">
+            {researchReport.summary && (
+              <p className="font-medium text-gray-800 dark:text-gray-200 mb-1">{researchReport.summary.slice(0, 200)}</p>
+            )}
+            {researchReport.sections?.map((s: any, i: number) => (
+              <details key={i} className="mb-1">
+                <summary className="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline">{s.heading}</summary>
+                <p className="mt-1 text-gray-500 dark:text-zinc-400">{s.content.slice(0, 300)}</p>
+              </details>
+            ))}
+            {researchReport.sources?.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-gray-200 dark:border-zinc-700">
+                <p className="text-[10px] text-gray-400 mb-1">来源:</p>
+                {researchReport.sources.map((src: string, i: number) => (
+                  <p key={i} className="text-[10px] text-blue-500 truncate">{src}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* Knowledge Panel — 知识库增强浏览 (独家功能) */}
+      <KnowledgePanel />
 
       {/* Conversation History Panel */}
       {showHistory && (

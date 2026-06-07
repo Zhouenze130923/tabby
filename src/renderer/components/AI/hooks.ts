@@ -146,10 +146,33 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
             setLoading(false);
             cleanup();
 
+            // 从显示文本中剥离所有 [command:] 标记
+            var cleanedContent = fullContent
+              .replace(/\[file-action:[^\]]*\]/g, '')
+              .replace(/\[tab-action:[^\]]*\]/g, '')
+              .replace(/\[browser-style:[^\]]*\]/g, '')
+              .replace(/\[set-accent:[^\]]*\]/g, '')
+              .replace(/\[search:[^\]]*\]/g, '')
+              .trim();
+
+            // 如果剥离后还有内容，更新显示
+            if (cleanedContent && cleanedContent !== fullContent) {
+              setMessages(function(prev: any[]) {
+                var copy = prev.slice();
+                for (var i = copy.length - 1; i >= 0; i--) {
+                  if (copy[i].role === 'assistant') {
+                    copy[i] = { ...copy[i], content: cleanedContent };
+                    break;
+                  }
+                }
+                return copy;
+              });
+            }
+
             // Fire onAfterResponse with the completed pair
-            if (!savedRef.current && onAfterResponseRef.current && fullContent) {
+            if (!savedRef.current && onAfterResponseRef.current && cleanedContent) {
               savedRef.current = true;
-              const assistantMsg: ChatMessage = { role: "assistant", content: fullContent };
+              const assistantMsg: ChatMessage = { role: "assistant", content: cleanedContent };
               try {
                 onAfterResponseRef.current(userMsg, assistantMsg);
               } catch (e) {
@@ -246,6 +269,32 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
                     onTabActionRef.current({ type: "content", tabId: args });
                     break;
                 }
+              }
+            }
+            // 处理 [file-action:] — 静默执行，结果喂回 AI（不显示在聊天中）
+            if (fullContent) {
+              var fileRegex = /\[file-action:\s*(\w+)\s*,?\s*([^\]]*)\]/g;
+              var fm;
+              while ((fm = fileRegex.exec(fullContent)) !== null) {
+                var ftype = fm[1].trim();
+                var fargs = fm[2].trim();
+                try {
+                  if (ftype === "read" && fargs) {
+                    (window as any).tabby?.file?.read(fargs).then(function(r: any) {
+                      if (r.success) {
+                        // 文件内容喂回 AI，不显示给用户
+                        send("[文件内容: " + fargs + "]\n\n" + r.content.slice(0, 10000), false);
+                      }
+                    });
+                  } else if (ftype === "write" && fargs) {
+                    var sep2 = fargs.indexOf(",");
+                    if (sep2 > 0) {
+                      (window as any).tabby?.file?.write(fargs.slice(0, sep2).trim(), fargs.slice(sep2 + 1).trim());
+                    }
+                  } else if (ftype === "select") {
+                    (window as any).tabby?.file?.select();
+                  }
+                } catch {}
               }
             }
           }

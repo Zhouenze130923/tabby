@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import ProviderConfig from "./ProviderConfig";
 import ImportPanel from "../Import/ImportPanel";
-import { X, Key, SlidersHorizontal, Info, Search, Download } from "lucide-react";
+import { X, Key, SlidersHorizontal, Info, Search, Download, Shield } from "lucide-react";
 
-type Tab = "apiKeys" | "search" | "general" | "about" | "import";
+type Tab = "apiKeys" | "search" | "general" | "permissions" | "about" | "import";
 
 const PROVIDER_META: Record<
   string,
@@ -32,6 +32,7 @@ interface SettingsPanelProps {
 
 export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>("apiKeys");
+  const [permissions, setPermissions] = useState<Record<string, boolean>>({});
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [providers, setProviders] = useState<Record<string, any>>({});
   const [defaultProvider, setDefaultProvider] = useState("deepseek");
@@ -78,10 +79,27 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     }
   };
 
+  // 加载权限设置
+  useEffect(() => {
+    window.tabby.settings.get().then((s: any) => {
+      const saved = s.permissions;
+      if (saved) {
+        setPermissions(typeof saved === "string" ? JSON.parse(saved) : saved);
+      }
+    });
+  }, []);
+
+  const togglePermission = (key: string) => {
+    const next = { ...permissions, [key]: !permissions[key] };
+    setPermissions(next);
+    window.tabby.settings.set("permissions", JSON.stringify(next));
+  };
+
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "apiKeys", label: "API Keys", icon: <Key size={16} /> },
     { id: "search", label: "搜索", icon: <Search size={16} /> },
     { id: "general", label: "通用", icon: <SlidersHorizontal size={16} /> },
+    { id: "permissions", label: "权限", icon: <Shield size={16} /> },
     { id: "about", label: "关于", icon: <Info size={16} /> },
     { id: "import", label: "导入", icon: <Download size={16} /> },
   ];
@@ -297,6 +315,51 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                   ))}
                 </select>
               </div>
+            </div>
+          )}
+
+          {activeTab === "permissions" && (
+            <div className="space-y-4">
+              <h3 className="text-base font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <Shield size={16} className="text-green-500" />
+                AI 权限控制
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-zinc-400">
+                控制 AI 可以执行哪些操作。关闭后 AI 调用的相关命令将被静默忽略。
+              </p>
+              <div className="space-y-3">
+                {[
+                  { key: "fileRead", label: "读取文件", desc: "AI 可以读取家目录中的文件内容" },
+                  { key: "fileWrite", label: "写入文件", desc: "AI 可以创建和修改文件" },
+                  { key: "fileDelete", label: "删除文件", desc: "AI 可以删除文件和目录" },
+                  { key: "tabControl", label: "操控标签页", desc: "AI 可以打开/关闭/导航标签页" },
+                  { key: "tabExtract", label: "提取页面内容", desc: "AI 可以读取当前网页的文本和HTML" },
+                  { key: "tabScreenshot", label: "截图", desc: "AI 可以对标签页截图" },
+                  { key: "tabExecute", label: "执行JS", desc: "AI 可以在页面中执行 JavaScript" },
+                  { key: "webSearch", label: "联网搜索", desc: "AI 可以联网搜索信息" },
+                ].map((p) => (
+                  <div key={p.key} className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50 dark:bg-zinc-800/70 border border-gray-100 dark:border-zinc-700">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{p.label}</span>
+                        <span className={"text-[10px] px-1.5 py-0.5 rounded-full " + (permissions[p.key] !== false ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400" : "bg-gray-200 dark:bg-zinc-700 text-gray-500")}>
+                          {permissions[p.key] !== false ? "允许" : "禁止"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-400 dark:text-zinc-500 mt-0.5">{p.desc}</p>
+                    </div>
+                    <button
+                      onClick={() => togglePermission(p.key)}
+                      className={"relative w-11 h-6 rounded-full transition-colors shrink-0 " + (permissions[p.key] !== false ? "accent-bg" : "bg-gray-300 dark:bg-zinc-600")}
+                    >
+                      <span className={"absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform " + (permissions[p.key] !== false ? "translate-x-5" : "")} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-400 dark:text-zinc-600 italic">
+                💡 默认全部允许。所有操作仅限于家目录内的文件。
+              </p>
             </div>
           )}
 

@@ -44,6 +44,73 @@ const api = {
     scrollTo: (tabId: string, x: number, y: number) =>
       ipcRenderer.invoke("tab:scrollTo", tabId, x, y),
     createPage: (html: string) => ipcRenderer.invoke("tab:createPage", html),
+    /** Take screenshot of a tab */
+    screenshot: (tabId: string) => ipcRenderer.invoke("tab:screenshot", tabId),
+    /** Get full page info (title, url, html, text) */
+    getPageInfo: (tabId: string) => ipcRenderer.invoke("tab:getPageInfo", tabId),
+    /** Highlight an element on the page */
+    highlight: (tabId: string, selector: string) => ipcRenderer.invoke("tab:highlight", tabId, selector),
+  },
+
+  // File System (本地文件操作)
+  file: {
+    read: (filePath: string) => ipcRenderer.invoke("file:read", filePath),
+    write: (filePath: string, content: string) => ipcRenderer.invoke("file:write", filePath, content),
+    list: (dirPath: string) => ipcRenderer.invoke("file:list", dirPath),
+    select: () => ipcRenderer.invoke("file:select"),
+    selectDir: () => ipcRenderer.invoke("file:selectDir"),
+    delete: (filePath: string) => ipcRenderer.invoke("file:delete", filePath),
+    trash: (filePath: string) => ipcRenderer.invoke("file:trash", filePath),
+  },
+
+  // Clippings (智能片段收藏)
+  clippings: {
+    list: (type?: string) => ipcRenderer.invoke("clippings:list", type),
+    add: (clip: any) => ipcRenderer.invoke("clippings:add", clip),
+    remove: (id: string) => ipcRenderer.invoke("clippings:remove", id),
+    update: (id: string, updates: any) => ipcRenderer.invoke("clippings:update", id, updates),
+    search: (query: string) => ipcRenderer.invoke("clippings:search", query),
+  },
+
+  // Timeline (浏览时间线)
+  timeline: {
+    list: (limit?: number) => ipcRenderer.invoke("timeline:list", limit),
+    save: (label: string) => ipcRenderer.invoke("timeline:save", label),
+    remove: (id: string) => ipcRenderer.invoke("timeline:remove", id),
+    clear: () => ipcRenderer.invoke("timeline:clear"),
+    autoSnapshot: () => ipcRenderer.invoke("timeline:autoSnapshot"),
+  },
+
+  // Macros (浏览器宏)
+  macros: {
+    list: () => ipcRenderer.invoke("macros:list"),
+    save: (name: string, desc: string, steps: any[]) => ipcRenderer.invoke("macros:save", name, desc, steps),
+    delete: (id: string) => ipcRenderer.invoke("macros:delete", id),
+    execute: (id: string) => ipcRenderer.invoke("macros:execute", id),
+  },
+
+  // Knowledge (知识库)
+  knowledge: {
+    search: (query: string) => ipcRenderer.invoke("knowledge:search", query),
+    context: (query: string) => ipcRenderer.invoke("knowledge:context", query),
+    autoDetect: () => ipcRenderer.invoke("knowledge:autoDetect"),
+    cache: () => ipcRenderer.invoke("knowledge:cache"),
+  },
+
+  // Research (自主调研)
+  research: {
+    start: (query: string) => ipcRenderer.invoke("research:start", query),
+    status: (agentId: string) => ipcRenderer.invoke("research:status", agentId),
+    onDone: (cb: (data: any) => void) => {
+      const handler = (_event: any, data: any) => cb(data);
+      ipcRenderer.on("research:done", handler);
+      return () => ipcRenderer.removeListener("research:done", handler);
+    },
+  },
+
+  // Omnibox (全能输入框)
+  omnibox: {
+    suggest: (input: string) => ipcRenderer.invoke("omnibox:suggest", input),
   },
 
   // AI

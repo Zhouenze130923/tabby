@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, webContents, app } from "electron";
+import { ipcMain, BrowserWindow, webContents, app, dialog } from "electron";
 import fs from "fs";
 import path from "path";
 import { tabManager } from "../browser/tab-manager";
@@ -10,6 +10,10 @@ import {
   conversations,
   chatMessages,
   close as closeDb,
+  clippings,
+  timeline,
+  macros as dbMacros,
+  knowledgeCache,
 } from "../storage/db";
 import { loadSkills, getSkill, executeSkill } from "../skills/loader";
 import { tasks as dbTasks } from "../storage/db";
@@ -17,13 +21,22 @@ import { taskScheduler } from "../tasks/scheduler";
 import { importFromChrome, importFromSafari, importFromFirefox, importFromAll } from "../import/browsers";
 import { DeepSeekProvider } from "../ai/providers/deepseek";
 import { ClaudeProvider } from "../ai/providers/claude";
+import { OpenAIProvider } from "../ai/providers/openai";
 import { getSearchProvider } from "../search/engine";
+import { ResearchAgent } from "../ai/research-agent";
+import { searchKnowledge, buildKnowledgeContext, autoDetectKnowledge } from "../knowledge/bridge";
 
 // Track the current AbortController for AI stream cancellation
 let currentAbortController: AbortController | null = null;
 
 // Map tabId → webContentsId for page content extraction
 const tabWebContents = new Map<string, number>();
+
+// ── Research Agent instances ──
+const activeAgents = new Map<string, any>();
+function generateAgentId(): string {
+  return `agent_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 function getProvider(providerName?: string): any {
   // Read provider config from SQLite settings
@@ -42,17 +55,11 @@ function getProvider(providerName?: string): any {
   }
   switch (name) {
     case "deepseek":
-      return new DeepSeekProvider({
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl,
-        model: config.model,
-      });
+      return new DeepSeekProvider({ apiKey: config.apiKey, baseUrl: config.baseUrl, model: config.model });
     case "claude":
-      return new ClaudeProvider({
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl,
-        model: config.model,
-      });
+      return new ClaudeProvider({ apiKey: config.apiKey, baseUrl: config.baseUrl, model: config.model });
+    case "openai":
+      return new OpenAIProvider({ apiKey: config.apiKey, baseUrl: config.baseUrl, model: config.model });
     default:
       throw new Error(`Unknown provider: ${name}`);
   }
@@ -206,6 +213,7 @@ export function registerHandlers(mainWindow: BrowserWindow) {
   });
 
   ipcMain.handle("tab:executeJS", async (_e, tabId: string, code: string) => {
+    if (!hasPermission("tabExecute")) return { success: false, error: "JS 执行权限已被关闭" };
     try {
       const wcId = tabWebContents.get(tabId);
       if (!wcId) return { success: false, error: "tab not found" };
@@ -519,6 +527,436 @@ export function registerHandlers(mainWindow: BrowserWindow) {
   ipcMain.handle("messages:clear", (_e, conversationId: string) =>
     chatMessages.clear(conversationId)
   );
+
+  // —— Clippings (智能片段收藏) ——
+  ipcMain.handle("clippings:list", (_e, type?: string) => clippings.all(type));
+  ipcMain.handle("clippings:add", (_e, clip: any) => clippings.add(clip));
+  ipcMain.handle("clippings:remove", (_e, id: string) => clippings.remove(id));
+  ipcMain.handle("clippings:update", (_e, id: string, updates: any) => clippings.update(id, updates));
+  ipcMain.handle("clippings:search", (_e, query: string) => clippings.search(query));
+
+  // —— Timeline (浏览时间线) ——
+  ipcMain.handle("timeline:list", (_e, limit?: number) => timeline.all(limit));
+  ipcMain.handle("timeline:save", async (_e, label: string) => {
+    const allTabs = tabManager.getAll();
+    const active = tabManager.getActive();
+    const snapshotData = JSON.stringify({
+      tabs: allTabs.map(t => ({ id: t.id, url: t.url, title: t.title })),
+      activeUrl: active?.url || "",
+      timestamp: new Date().toISOString(),
+    });
+    return timeline.add(label, snapshotData);
+  });
+  ipcMain.handle("timeline:remove", (_e, id: string) => timeline.remove(id));
+  ipcMain.handle("timeline:clear", () => timeline.clear());
+  ipcMain.handle("timeline:autoSnapshot", async () => {
+    // Auto-save snapshot every 30 minutes (called by frontend timer)
+    const allTabs = tabManager.getAll();
+    if (allTabs.length === 0) return null;
+    const active = tabManager.getActive();
+    const label = `自动快照 ${new Date().toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`;
+    const snapshotData = JSON.stringify({
+      tabs: allTabs.map(t => ({ id: t.id, url: t.url, title: t.title })),
+      activeUrl: active?.url || "",
+      timestamp: new Date().toISOString(),
+    });
+    return timeline.add(label, snapshotData);
+  });
+
+  // —— Macros (浏览器宏) ——
+  ipcMain.handle("macros:list", () => dbMacros.all());
+  ipcMain.handle("macros:save", (_e, name: string, desc: string, steps: any[]) => dbMacros.add(name, desc, steps));
+  ipcMain.handle("macros:delete", (_e, id: string) => dbMacros.remove(id));
+  ipcMain.handle("macros:execute", async (_e, macroId: string) => {
+    const macro = dbMacros.get(macroId);
+    if (!macro) return { success: false, error: "Macro not found" };
+    const steps = JSON.parse(macro.steps);
+    const results: any[] = [];
+    for (const step of steps) {
+      try {
+        const wcId = tabWebContents.get(tabManager.getActiveId() || "");
+        const wc = wcId ? webContents.fromId(wcId) : null;
+        switch (step.type) {
+          case "navigate":
+            tabManager.navigate(tabManager.getActiveId() || "", step.params.url);
+            await new Promise(r => setTimeout(r, 2000));
+            results.push({ success: true, type: "navigate" });
+            break;
+          case "click":
+            if (wc) {
+              await wc.executeJavaScript(`document.querySelector(${JSON.stringify(step.params.selector)})?.click()`);
+              results.push({ success: true, type: "click" });
+            }
+            break;
+          case "type":
+            if (wc) {
+              await wc.executeJavaScript(`
+                (() => { const el = document.querySelector(${JSON.stringify(step.params.selector)});
+                if (el) { el.value = ${JSON.stringify(step.params.text || "")};
+                el.dispatchEvent(new Event('input', { bubbles: true })); return true; } return false; })()`);
+              results.push({ success: true, type: "type" });
+            }
+            break;
+          case "wait":
+            await new Promise(r => setTimeout(r, step.params.ms || 1000));
+            results.push({ success: true, type: "wait" });
+            break;
+          case "extract":
+            if (wc) {
+              const text = await wc.executeJavaScript("document.body.innerText");
+              results.push({ success: true, type: "extract", data: text.slice(0, 500) });
+            }
+            break;
+          default:
+            results.push({ success: false, type: step.type, error: "Unknown step type" });
+        }
+      } catch (err: any) {
+        results.push({ success: false, type: step.type, error: err.message });
+      }
+    }
+    return { success: true, results };
+  });
+
+  // —— File System (本地文件操作) ——
+  /** 展开路径中的 ~ 为 home 目录 */
+  function resolvePath(p: string): string {
+    if (p.startsWith("~")) {
+      return path.join(app.getPath("home"), p.slice(1));
+    }
+    return path.resolve(p);
+  }
+
+  /** 检查某项权限是否允许 — 默认全部允许 */
+  function hasPermission(perm: string): boolean {
+    try {
+      const raw = dbSettings.get("permissions");
+      if (!raw) return true;
+      const perms = JSON.parse(raw);
+      return perms[perm] !== false;
+    } catch { return true; }
+  }
+
+  ipcMain.handle("file:read", async (_e, filePath: string) => {
+    if (!hasPermission("fileRead")) return { success: false, error: "文件读取权限已被关闭，请在设置中开启" };
+    try {
+      const home = app.getPath("home");
+      const resolved = resolvePath(filePath);
+      // Security: only allow files within user's home directory and allowed paths
+      if (!resolved.startsWith(home) && !resolved.startsWith(app.getPath("userData")) && !resolved.startsWith("/tmp")) {
+        return { success: false, error: "不允许访问该路径（仅限于家目录内）" };
+      }
+      if (!fs.existsSync(resolved)) {
+        return { success: false, error: "文件不存在: " + resolved };
+      }
+      const stat = fs.statSync(resolved);
+      if (stat.isDirectory()) {
+        return { success: false, error: "这是一个目录，请使用 file:list" };
+      }
+      const content = fs.readFileSync(resolved, "utf-8");
+      return { success: true, content, path: resolved, size: stat.size };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("file:write", async (_e, filePath: string, content: string) => {
+    if (!hasPermission("fileWrite")) return { success: false, error: "文件写入权限已被关闭" };
+    try {
+      const home = app.getPath("home");
+      const resolved = resolvePath(filePath);
+      if (!resolved.startsWith(home) && !resolved.startsWith(app.getPath("userData"))) {
+        return { success: false, error: "不允许写入该路径" };
+      }
+      const dir = path.dirname(resolved);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(resolved, content, "utf-8");
+      return { success: true, path: resolved };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+    ipcMain.handle("file:trash", async (_e, filePath: string) => {
+    if (!hasPermission("fileDelete")) return { success: false, error: "文件删除权限已被关闭" };
+    try {
+      const home = app.getPath("home");
+      const resolved = resolvePath(filePath);
+      if (!resolved.startsWith(home) && !resolved.startsWith(app.getPath("userData"))) {
+        return { success: false, error: "不允许操作该路径" };
+      }
+      if (!fs.existsSync(resolved)) {
+        return { success: false, error: "文件不存在: " + resolved };
+      }
+      const { shell } = require("electron");
+      await shell.trashItem(resolved);
+      return { success: true, path: resolved };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("file:delete", async (_e, filePath: string) => {
+    if (!hasPermission("fileDelete")) return { success: false, error: "文件删除权限已被关闭" };
+    try {
+      const home = app.getPath("home");
+      const resolved = resolvePath(filePath);
+      if (!resolved.startsWith(home) && !resolved.startsWith(app.getPath("userData"))) {
+        return { success: false, error: "不允许删除该路径" };
+      }
+      if (!fs.existsSync(resolved)) {
+        return { success: false, error: "文件不存在: " + resolved };
+      }
+      const stat = fs.statSync(resolved);
+      if (stat.isDirectory()) {
+        fs.rmSync(resolved, { recursive: true });
+      } else {
+        fs.unlinkSync(resolved);
+      }
+      return { success: true, path: resolved };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("file:list", async (_e, dirPath: string) => {
+    try {
+      const home = app.getPath("home");
+      const resolved = resolvePath(dirPath);
+      if (!resolved.startsWith(home) && !resolved.startsWith(app.getPath("userData")) && resolved !== "/tmp") {
+        return { success: false, error: "不允许访问该路径" };
+      }
+      if (!fs.existsSync(resolved)) {
+        return { success: false, error: "目录不存在" };
+      }
+      const entries = fs.readdirSync(resolved, { withFileTypes: true });
+      const items = entries.map((entry) => ({
+        name: entry.name,
+        path: path.join(resolved, entry.name),
+        isDirectory: entry.isDirectory(),
+        isFile: entry.isFile(),
+        size: entry.isFile() ? fs.statSync(path.join(resolved, entry.name)).size : 0,
+      }));
+      return { success: true, path: resolved, items };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("file:select", async () => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ["openFile", "multiSelections"],
+        filters: [
+          { name: "所有文件", extensions: ["*"] },
+          { name: "代码", extensions: ["ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "c", "cpp"] },
+          { name: "文档", extensions: ["md", "txt", "json", "yaml", "yml", "toml"] },
+          { name: "图片", extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg"] },
+        ],
+      });
+      if (result.canceled || !result.filePaths.length) {
+        return { success: false, canceled: true };
+      }
+      return { success: true, paths: result.filePaths };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("file:selectDir", async () => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ["openDirectory"],
+      });
+      if (result.canceled || !result.filePaths.length) {
+        return { success: false, canceled: true };
+      }
+      return { success: true, path: result.filePaths[0] };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // —— Enhanced Tab Operations ——
+  ipcMain.handle("tab:screenshot", async (_e, tabId: string) => {
+    if (!hasPermission("tabScreenshot")) return { success: false, error: "截图权限已被关闭" };
+    try {
+      const wcId = tabWebContents.get(tabId);
+      if (!wcId) return { success: false, error: "tab not found" };
+      const wc = webContents.fromId(wcId);
+      if (!wc || wc.isDestroyed()) return { success: false, error: "webview destroyed" };
+      const img = await wc.capturePage();
+      const base64 = img.toDataURL();
+      return { success: true, screenshot: base64 };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("tab:getPageInfo", async (_e, tabId: string) => {
+    if (!hasPermission("tabExtract")) return { success: false, error: "页面内容提取权限已被关闭" };
+    try {
+      const wcId = tabWebContents.get(tabId);
+      if (!wcId) return { success: false, error: "tab not found" };
+      const wc = webContents.fromId(wcId);
+      if (!wc || wc.isDestroyed()) return { success: false, error: "webview destroyed" };
+      const [title, url, html, text] = await Promise.all([
+        wc.executeJavaScript("document.title").catch(() => ""),
+        wc.executeJavaScript("window.location.href").catch(() => ""),
+        wc.executeJavaScript("document.documentElement.outerHTML").catch(() => ""),
+        wc.executeJavaScript("document.body.innerText").catch(() => ""),
+      ]);
+      return { success: true, title, url, html: html?.slice(0, 50000), text: text?.slice(0, 20000) };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("tab:highlight", async (_e, tabId: string, selector: string) => {
+    try {
+      const wcId = tabWebContents.get(tabId);
+      if (!wcId) return { success: false, error: "tab not found" };
+      const wc = webContents.fromId(wcId);
+      if (!wc || wc.isDestroyed()) return { success: false, error: "webview destroyed" };
+      await wc.executeJavaScript(`
+        (() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return false;
+          el.style.outline = "3px solid #ff0000";
+          el.style.outlineOffset = "2px";
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          setTimeout(() => { el.style.outline = ""; el.style.outlineOffset = ""; }, 2000);
+          return true;
+        })()
+      `);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // —— Knowledge Bridge (知识库增强) ——
+  ipcMain.handle("knowledge:search", async (_e, query: string) => {
+    return searchKnowledge(query);
+  });
+  ipcMain.handle("knowledge:context", async (_e, query: string) => {
+    return buildKnowledgeContext(query);
+  });
+  ipcMain.handle("knowledge:autoDetect", async (_e) => {
+    const active = tabManager.getActive();
+    if (!active) return [];
+    const wcId = tabWebContents.get(active.id);
+    let pageContent = "";
+    if (wcId) {
+      const wc = webContents.fromId(wcId);
+      if (wc && !wc.isDestroyed()) {
+        try {
+          pageContent = await wc.executeJavaScript("document.body.innerText", true);
+        } catch {}
+      }
+    }
+    const items = await autoDetectKnowledge(active.title, active.url, pageContent);
+    // Cache results
+    for (const item of items) {
+      knowledgeCache.add(item.title, item.content.slice(0, 500), item.source, "");
+    }
+    return items;
+  });
+  ipcMain.handle("knowledge:cache", () => knowledgeCache.all());
+
+  // —— Research Agent (自主调研) ——
+  ipcMain.handle("research:start", async (_e, query: string) => {
+    const agent = new ResearchAgent();
+    const agentId = generateAgentId();
+    activeAgents.set(agentId, agent);
+    // Start research in background
+    agent.research(query).then(report => {
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("research:done", { agentId, report, logs: agent.getLogs() });
+      }
+    }).catch(err => {
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("research:done", { agentId, error: err.message });
+      }
+    });
+    return { agentId, message: "调研已启动" };
+  });
+  ipcMain.handle("research:status", async (_e, agentId: string) => {
+    const agent = activeAgents.get(agentId);
+    if (!agent) return { error: "Agent not found" };
+    return { logs: agent.getLogs(), report: agent.getReport() };
+  });
+
+  // —— Omnibox (全能输入框) ——
+  ipcMain.handle("omnibox:suggest", async (_e, input: string) => {
+    const suggestions: Array<{ type: string; label: string; value: string }> = [];
+    const trimmed = input.trim();
+
+    // URL detection
+    if (trimmed.includes(".") && !trimmed.includes(" ")) {
+      const url = trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
+      suggestions.push({ type: "url", label: `🌐 访问 ${trimmed}`, value: url });
+    }
+
+    // @ references
+    if (trimmed.startsWith("@")) {
+      const ref = trimmed.slice(1).toLowerCase();
+      // @tab: search open tabs
+      const allTabs = tabManager.getAll();
+      for (const t of allTabs) {
+        if (t.title.toLowerCase().includes(ref) || t.url.toLowerCase().includes(ref)) {
+          suggestions.push({ type: "@tab", label: `📄 ${t.title.slice(0, 40)}`, value: `@tab:${t.id}` });
+        }
+      }
+      // @clip: search clippings
+      if (ref.length > 0) {
+        const clips = clippings.search(ref);
+        for (const c of clips.slice(0, 5)) {
+          suggestions.push({ type: "@clip", label: `📎 ${c.source_title.slice(0, 40)}`, value: `@clip:${c.id}` });
+        }
+      }
+      // @kb: search knowledge base
+      if (ref.length > 0) {
+        const kbItems = await searchKnowledge(ref);
+        for (const k of kbItems.slice(0, 3)) {
+          suggestions.push({ type: "@kb", label: `🧠 ${k.title.slice(0, 40)}`, value: `@kb:${k.title}` });
+        }
+      }
+    }
+
+    // /commands
+    if (trimmed.startsWith("/")) {
+      const cmd = trimmed.slice(1).toLowerCase();
+      const allPrompts = prompts.all();
+      for (const p of allPrompts) {
+        if (p.name.toLowerCase().includes(cmd)) {
+          suggestions.push({ type: "/prompt", label: `⚡ ${p.name}: ${p.description}`, value: p.prompt });
+        }
+      }
+      // Built-in commands
+      if ("research".includes(cmd)) {
+        suggestions.push({ type: "/research", label: "🔬 启动自主调研", value: "/research" });
+      }
+      if ("snapshot".includes(cmd)) {
+        suggestions.push({ type: "/snapshot", label: "📸 保存浏览快照", value: "/snapshot" });
+      }
+      if ("clip".includes(cmd)) {
+        suggestions.push({ type: "/clip", label: "📎 收藏当前页面", value: "/clip" });
+      }
+      if ("timeline".includes(cmd)) {
+        suggestions.push({ type: "/timeline", label: "🕰️ 浏览时间线", value: "/timeline" });
+      }
+    }
+
+    // Search suggestions (when it's a general query)
+    if (!trimmed.startsWith("@") && !trimmed.startsWith("/") && !trimmed.includes(".") && trimmed.length > 1) {
+      suggestions.push({ type: "search", label: `🔍 搜索: ${trimmed}`, value: `search:${trimmed}` });
+      suggestions.push({ type: "ask", label: `🤖 AI 提问: ${trimmed}`, value: `ask:${trimmed}` });
+    }
+
+    return suggestions.slice(0, 10);
+  });
 
   // —— Cleanup on window close ——
   mainWindow.on("closed", () => {

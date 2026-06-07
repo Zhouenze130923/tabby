@@ -9,9 +9,11 @@ import TitleBar from "./components/Browser/TitleBar";
 import ErrorBoundary from "./components/ErrorBoundary";
 import SettingsPanel from "./components/Settings/SettingsPanel";
 import HistoryPanel from "./components/History/HistoryPanel";
+import ClippingsPanel from "./components/Clippings/ClippingsPanel";
+import TimelinePanel from "./components/Timeline/TimelinePanel";
+import OmniboxPanel from "./components/Omnibox/OmniboxPanel";
 import PromptsPanel from "./components/Tips/TipsPanel";
 import TasksPanel from "./components/Tasks/TasksPanel";
-
 
 export default function App() {
   const activeTabId = useTabStore((s) => s.activeTabId);
@@ -21,13 +23,19 @@ export default function App() {
   const [showPrompts, setShowPrompts] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showTasks, setShowTasks] = useState(false);
+  const [showClippings, setShowClippings] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
+  const [showOmnibox, setShowOmnibox] = useState(false);
   const [aiSearchQuery, setAiSearchQuery] = useState<string | null>(null);
   const [aiPromptToExecute, setAiPromptToExecute] = useState<{ text: string } | null>(null);
   const taskExecutionInProgress = useRef(false);
-  const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [sidebarWidth, setSidebarWidth] = useState(380);
   const initialized = useRef(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isResizing = useRef(false);
+
+  // Auto snapshot timer
+  const autoSnapshotTimer = useRef<ReturnType<typeof setInterval>>();
 
   // 加载保存的 UI 样式（browser-style 持久化）
   useEffect(() => {
@@ -44,10 +52,31 @@ export default function App() {
     load("pivot-ui-sidebar-bg", "--pivot-ui-sidebar-bg");
     const uiFontSize = localStorage.getItem("pivot-ui-font-size");
     if (uiFontSize) document.body.style.fontSize = uiFontSize;
-    // 恢复主题
     const theme = localStorage.getItem("pivot-theme");
     if (theme === "dark") root.classList.add("dark");
     if (theme === "light") root.classList.remove("dark");
+  }, []);
+
+  // Keyboard shortcut: Cmd/Ctrl+K for Omnibox
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowOmnibox(true);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  // Auto snapshot every 5 minutes
+  useEffect(() => {
+    autoSnapshotTimer.current = setInterval(() => {
+      window.tabby.timeline.autoSnapshot().catch(() => {});
+    }, 300000); // 5 minutes
+    return () => {
+      if (autoSnapshotTimer.current) clearInterval(autoSnapshotTimer.current);
+    };
   }, []);
 
   // Sidebar resize handling
@@ -60,7 +89,7 @@ export default function App() {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing.current) return;
       const newWidth = window.innerWidth - e.clientX;
-      setSidebarWidth(Math.max(260, Math.min(600, newWidth)));
+      setSidebarWidth(Math.max(300, Math.min(700, newWidth)));
     };
 
     const handleMouseUp = () => {
@@ -76,11 +105,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // StrictMode 下 effect 会跑两次，用 ref 防止重复初始化
     if (initialized.current) return;
     initialized.current = true;
 
-    // 先注册推送监听，再加载初始状态
     const unsub = window.tabby.tab.onUpdate((tabs, activeTabId) => {
       useTabStore.getState().setTabs(tabs);
       if (activeTabId) useTabStore.getState().setActiveTab(activeTabId);
@@ -88,7 +115,6 @@ export default function App() {
 
     window.tabby.tab.list().then((tabs) => {
       if (tabs.length === 0) {
-        // 首次启动 — 创建空标签页，tab:updated 推送会自动更新 store
         window.tabby.tab.create();
       } else {
         useTabStore.getState().setTabs(tabs);
@@ -98,27 +124,45 @@ export default function App() {
       }
     });
 
-    // 注册定时任务执行监听
     const unsubTasks = window.tabby.tasks.onExecute((task) => {
       if (taskExecutionInProgress.current) return;
       taskExecutionInProgress.current = true;
-
       setShowSidePanel(true);
       setAiPromptToExecute({ text: `[定时任务: ${task.name}] ${task.prompt}` });
-
-      // Reset the flag after a delay
-      setTimeout(() => {
-        taskExecutionInProgress.current = false;
-      }, 5000);
+      setTimeout(() => { taskExecutionInProgress.current = false; }, 5000);
     });
+
+    // Listen for knowledge reference events (from KnowledgePanel)
+    const handleKnowledgeRef = (e: CustomEvent) => {
+      setShowSidePanel(true);
+      setAiPromptToExecute({ text: e.detail });
+    };
+    window.addEventListener("pivot:knowledge-ref", handleKnowledgeRef as EventListener);
 
     return () => {
       unsub();
       unsubTasks();
+      window.removeEventListener("pivot:knowledge-ref", handleKnowledgeRef as EventListener);
     };
   }, []);
 
-  // 浮窗模式 — 只显示 AI 对话界面
+  // Omnibox navigation handlers
+  const handleOmniboxNavigate = useCallback((url: string) => {
+    window.tabby.tab.getAllInfo().then(tabs => {
+      const active = tabs.find(t => t.isActive);
+      if (active) window.tabby.tab.navigate(active.id, url);
+      else window.tabby.tab.create(url);
+    });
+  }, []);
+
+  const handleOmniboxSearch = useCallback((query: string) => {
+    window.tabby.tab.create(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
+  }, []);
+
+  const handleOmniboxAsk = useCallback((query: string) => {
+    setShowSidePanel(true);
+    setAiSearchQuery(query);
+  }, []);
 
   return (
     <ErrorBoundary>
@@ -130,16 +174,21 @@ export default function App() {
         onOpenPrompts={() => setShowPrompts(true)}
         onOpenHistory={() => setShowHistory(true)}
         onOpenTasks={() => setShowTasks(true)}
+        onOpenOmnibox={() => setShowOmnibox(true)}
+        onOpenClippings={() => setShowClippings(true)}
+        onOpenTimeline={() => setShowTimeline(true)}
       />
       <TabBar />
-      <AddressBar onAiSearch={(query) => { setShowSidePanel(true); setAiSearchQuery(query); }} />
+      <AddressBar
+        onAiSearch={(query) => { setShowSidePanel(true); setAiSearchQuery(query); }}
+        onAiAsk={(query) => { setShowSidePanel(true); setAiSearchQuery(query); }}
+      />
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 flex flex-col min-w-0">
           <WebView onAiSearch={(query) => { setShowSidePanel(true); setAiSearchQuery(query); }} />
         </div>
         {showSidePanel && (
           <>
-            {/* Resize handle */}
             <div
               className="w-1 hover:w-1.5 active:w-1.5 shrink-0 resize-handle transition-[width] duration-75 bg-gray-200 dark:bg-zinc-700 accent-bg-hover active:accent-bg"
               onMouseDown={handleMouseDown}
@@ -149,11 +198,19 @@ export default function App() {
               className="border-l border-gray-200 dark:border-zinc-700 flex flex-col shrink-0"
               style={{ width: sidebarWidth }}
             >
-              <SidePanel tabId={activeTabId} initialQuery={aiSearchQuery} onQueryConsumed={() => setAiSearchQuery(null)} executePrompt={aiPromptToExecute} onPromptExecuted={() => setAiPromptToExecute(null)} />
+              <SidePanel
+                tabId={activeTabId}
+                initialQuery={aiSearchQuery}
+                onQueryConsumed={() => setAiSearchQuery(null)}
+                executePrompt={aiPromptToExecute}
+                onPromptExecuted={() => setAiPromptToExecute(null)}
+              />
             </div>
           </>
         )}
       </div>
+
+      {/* Modal Panels */}
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
       {showPrompts && (
         <PromptsPanel
@@ -166,6 +223,20 @@ export default function App() {
       )}
       {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
       {showTasks && <TasksPanel onClose={() => setShowTasks(false)} />}
+      {showClippings && <ClippingsPanel onClose={() => setShowClippings(false)} />}
+      {showTimeline && <TimelinePanel onClose={() => setShowTimeline(false)} />}
+      {showOmnibox && (
+        <OmniboxPanel
+          onClose={() => setShowOmnibox(false)}
+          onNavigate={handleOmniboxNavigate}
+          onSearch={handleOmniboxSearch}
+          onAiAsk={handleOmniboxAsk}
+          onExecutePrompt={(text) => {
+            setShowSidePanel(true);
+            setAiPromptToExecute({ text });
+          }}
+        />
+      )}
     </div>
     </ErrorBoundary>
   );

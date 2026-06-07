@@ -3,6 +3,7 @@ import { app } from "electron";
 import path from "path";
 import { SCHEMA } from "./schema";
 import { runMigrations } from "./migration";
+import { makeClippingsApi, makeTimelineApi, makeMacrosApi, makeKnowledgeCacheApi } from './features';
 
 // ── Conversation History Types ──
 
@@ -447,6 +448,12 @@ export const chatMessages = {
     return true;
   },
 };
+
+// ── Clippings (智能片段收藏) ──
+export const clippings = makeClippingsApi(db);
+export const timeline = makeTimelineApi(db);
+export const macros = makeMacrosApi(db);
+export const knowledgeCache = makeKnowledgeCacheApi(db);
 
 export function close(): void {
   db.close();
